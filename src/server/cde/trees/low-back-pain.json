@@ -1,0 +1,762 @@
+{
+  "id": "DT_LBP_001",
+  "version": "3.0.0",
+  "moduleType": "location",
+  "entryCondition": {
+    "bodyRegion": "lumbar_spine",
+    "primarySymptom": "pain"
+  },
+  "architecture": {
+    "type": "symptom_dominant",
+    "scoringWeights": {
+      "layer0": 0,
+      "layer1": 0.30,
+      "layer2": 0.30,
+      "layer3": 0.40
+    }
+  },
+  "crossReferences": [
+    { "tagId": "SCIATICA_DISC_BULGE", "target": "sciatica", "targetQuestion": "sp_radiation" },
+    { "tagId": "LEG_RADIATION", "target": "sciatica", "riskModifier": 1 },
+    { "tagId": "DEGENERATIVE_STREAM", "target": "spondylosis", "targetQuestion": "sp_duration" }
+  ],
+  "valueNormalization": {
+    "duration": {
+      "lt_2w": "acute_0_6_weeks",
+      "2_6w": "acute_0_6_weeks",
+      "lt_6w": "acute_0_6_weeks",
+      "6w_3m": "subacute_6_12_weeks",
+      "gt_3m": "chronic_over_12_weeks"
+    },
+    "radiation": {
+      "radiating_leg": "radicular_below_knee",
+      "below_knee": "radicular_below_knee",
+      "above_knee": "radicular_above_knee",
+      "dull_ache": "localized",
+      "sharp_burning": "localized",
+      "buttock_referral": "buttock_referral"
+    },
+    "aggravatingFactors": {
+      "flexion_lifting": "flexion",
+      "morning_stiffness": "morning_stiffness"
+    }
+  },
+
+  "nodes": [
+    {
+      "id": "LBP_RF_001",
+      "type": "red_flag_screen",
+      "phase": "safety_first",
+      "on_all_clear": "LBP_PROFILE_001",
+      "questions": [
+        {
+          "id": "rf_cauda_equina",
+          "text": "In relation to your back or leg symptoms, are you currently experiencing any of the following: loss of bladder/bowel control, numbness in the groin or saddle area, or sudden severe weakness in both legs?",
+          "uiType": "radio",
+          "options": [
+            { "label": "Yes — I am experiencing one or more of these", "value": "yes", "score": 0 },
+            { "label": "No — none of the above", "value": "no", "score": 0 }
+          ],
+          "allowMultiple": false,
+          "mapsTo": "redFlags.caudaEquina",
+          "sourceInstrument": "NICE NG59 Red Flag Guidelines",
+          "if_yes": {
+            "urgency": "emergency",
+            "message": "Your symptoms suggest a condition that may require emergency medical attention. Please go to your nearest emergency department or call emergency services immediately.",
+            "action": "EMERGENCY_REFERRAL",
+            "halt_tree": true
+          },
+          "if_no": { "action": "continue" }
+        },
+        {
+          "id": "rf_fracture",
+          "text": "Has your back pain started after a recent fall, accident, or direct injury to the spine?",
+          "uiType": "radio",
+          "options": [
+            { "label": "Yes", "value": "yes", "score": 0 },
+            { "label": "No", "value": "no", "score": 0 }
+          ],
+          "allowMultiple": false,
+          "mapsTo": "redFlags.fracture",
+          "sourceInstrument": "NICE NG59",
+          "if_yes": {
+            "urgency": "flag_and_continue",
+            "message": "We note your back pain followed an injury.",
+            "halt_tree": false,
+            "flag": "trauma_history"
+          },
+          "follow_up_if_yes": {
+            "id": "rf_fracture_risk",
+            "text": "Are you over 50 years old, or have you been diagnosed with osteoporosis?",
+            "uiType": "radio",
+            "options": [
+              { "label": "Yes", "value": "yes", "score": 0 },
+              { "label": "No", "value": "no", "score": 0 }
+            ],
+            "allowMultiple": false,
+            "mapsTo": "redFlags.fractureRisk",
+            "if_yes": {
+              "urgency": "urgent_24h",
+              "message": "Given your injury history and risk factors, we recommend you see a doctor within 24 hours to rule out a spinal fracture.",
+              "action": "URGENT_REFERRAL_24H",
+              "halt_tree": true
+            },
+            "if_no": { "action": "FLAG_AND_CONTINUE" }
+          },
+          "if_no": { "action": "continue" }
+        },
+        {
+          "id": "rf_cancer",
+          "text": "Have you experienced any of the following: unexplained weight loss (more than 5 kg in 3 months), a history of cancer, or pain that is worst at night and doesn't improve with rest?",
+          "uiType": "radio",
+          "options": [
+            { "label": "Yes — one or more of these", "value": "yes", "score": 0 },
+            { "label": "No — none of these", "value": "no", "score": 0 }
+          ],
+          "allowMultiple": false,
+          "mapsTo": "redFlags.cancer",
+          "sourceInstrument": "NICE NG59 / RMDQ systemic flags",
+          "if_yes": {
+            "urgency": "urgent_1_week",
+            "message": "Your responses suggest further medical evaluation is needed. Please see your doctor within the next week.",
+            "action": "URGENT_REFERRAL_1_WEEK",
+            "halt_tree": true
+          },
+          "if_no": { "action": "continue" }
+        },
+        {
+          "id": "rf_infection",
+          "text": "Do you currently have a fever, or have you recently had an infection, spinal surgery, or use of IV drugs?",
+          "uiType": "radio",
+          "options": [
+            { "label": "Yes", "value": "yes", "score": 0 },
+            { "label": "No", "value": "no", "score": 0 }
+          ],
+          "allowMultiple": false,
+          "mapsTo": "redFlags.infection",
+          "sourceInstrument": "NICE NG59",
+          "if_yes": {
+            "urgency": "urgent_24h",
+            "message": "Your symptoms may indicate a possible infection. We recommend urgent medical evaluation within 24 hours.",
+            "action": "URGENT_REFERRAL_24H",
+            "halt_tree": true
+          },
+          "if_no": { "action": "continue" }
+        }
+      ]
+    },
+
+    {
+      "id": "LBP_PROFILE_001",
+      "type": "symptom_profiling",
+      "phase": "understanding",
+      "next": "LBP_AGGRAVATING_001",
+      "questions": [
+        {
+          "id": "sp_duration",
+          "text": "How long have you been experiencing lower back pain or discomfort?",
+          "uiType": "radio",
+          "options": [
+            { "label": "Less than 6 weeks", "value": "acute_0_6_weeks", "score": 1 },
+            { "label": "6 weeks to 3 months", "value": "subacute_6_12_weeks", "score": 2 },
+            { "label": "More than 3 months", "value": "chronic_over_12_weeks", "score": 3 }
+          ],
+          "allowMultiple": false,
+          "maxScore": 3,
+          "mapsTo": "duration",
+          "sourceInstrument": "RMDQ / Nordic MSQ"
+        },
+        {
+          "id": "sp_severity",
+          "text": "On a scale of 0 to 10, where 0 is no pain and 10 is the worst pain imaginable, how would you rate your pain right now?",
+          "uiType": "numeric_scale",
+          "inputType": "numeric_scale",
+          "range": [0, 10],
+          "options": [],
+          "allowMultiple": false,
+          "maxScore": 10,
+          "mapsTo": "severity",
+          "sourceInstrument": "NPRS (Numeric Pain Rating Scale)"
+        },
+        {
+          "id": "sp_pattern",
+          "text": "When is your back pain typically at its worst? Select all that apply.",
+          "uiType": "multi_select",
+          "options": [
+            { "label": "First thing in the morning (stiffness)", "value": "morning_stiffness", "score": 1 },
+            { "label": "After sitting for a long time", "value": "prolonged_sitting", "score": 1 },
+            { "label": "During or after physical activity", "value": "activity_related", "score": 1 },
+            { "label": "Toward the end of the day", "value": "end_of_day", "score": 1 },
+            { "label": "It's constant — never really goes away", "value": "constant", "score": 2 }
+          ],
+          "allowMultiple": true,
+          "maxScore": 6,
+          "scoreCap": 3,
+          "mapsTo": "painPattern",
+          "sourceInstrument": "ODI / STarT Back"
+        },
+        {
+          "id": "sp_radiation",
+          "text": "Does your pain stay in your lower back, or does it travel to other areas?",
+          "uiType": "radio",
+          "options": [
+            { "label": "Stays in my lower back only", "value": "localized", "score": 0 },
+            { "label": "Travels into one or both buttocks", "value": "buttock_referral", "score": 1 },
+            { "label": "Travels down my leg but stays above the knee", "value": "radicular_above_knee", "score": 2 },
+            { "label": "Travels down my leg below the knee (into calf or foot)", "value": "radicular_below_knee", "score": 3 }
+          ],
+          "allowMultiple": false,
+          "maxScore": 3,
+          "mapsTo": "radiation",
+          "sourceInstrument": "ODI / Nordic MSQ",
+          "branching": {
+            "buttock_referral": "LBP_BUTTOCK_001",
+            "radicular_above_knee": "LBP_RADICULAR_001",
+            "radicular_below_knee": "LBP_RADICULAR_001"
+          }
+        }
+      ]
+    },
+
+    {
+      "id": "LBP_RADICULAR_001",
+      "type": "differential_assessment",
+      "phase": "investigation",
+      "next": "LBP_FUNCTIONAL_001",
+      "hypothesisModifiers": {
+        "positive_slr_AND_dermatomal": {
+          "increases_confidence": "disc_herniation_with_radiculopathy",
+          "recommended_games": ["KS1", "FA1", "BB2"]
+        }
+      },
+      "questions": [
+        {
+          "id": "rad_dermatome",
+          "text": "Where does the pain, tingling, or numbness travel to?",
+          "uiType": "radio",
+          "options": [
+            { "label": "Front of the thigh", "value": "L2_L3", "score": 1 },
+            { "label": "Outer thigh and shin", "value": "L4", "score": 2 },
+            { "label": "Top of the foot / big toe", "value": "L5", "score": 2 },
+            { "label": "Outer foot / small toe", "value": "S1", "score": 2 }
+          ],
+          "allowMultiple": false,
+          "maxScore": 2,
+          "mapsTo": "dermatomePattern",
+          "sourceInstrument": "Clinical dermatome mapping"
+        },
+        {
+          "id": "rad_neuro",
+          "text": "Are you experiencing any numbness, tingling, or muscle weakness in your leg?",
+          "uiType": "radio",
+          "options": [
+            { "label": "No — just pain", "value": "none", "score": 0 },
+            { "label": "Numbness or tingling only", "value": "sensory", "score": 1 },
+            { "label": "Weakness in my leg or foot", "value": "motor", "score": 3 },
+            { "label": "Both numbness/tingling AND weakness", "value": "sensorimotor", "score": 3 }
+          ],
+          "allowMultiple": false,
+          "maxScore": 3,
+          "mapsTo": "neuroDeficit",
+          "sourceInstrument": "Neurological screening",
+          "branching": {
+            "motor": "__follow_up_rad_progressive",
+            "sensorimotor": "__follow_up_rad_progressive"
+          },
+          "follow_up_if_yes": {
+            "id": "rad_progressive",
+            "text": "Is the weakness getting progressively worse over the past few days or weeks?",
+            "uiType": "radio",
+            "options": [
+              { "label": "Yes — it's getting worse", "value": "yes", "score": 0 },
+              { "label": "No — it's been stable", "value": "no", "score": 0 }
+            ],
+            "allowMultiple": false,
+            "mapsTo": "progressiveWorsening",
+            "if_yes": {
+              "urgency": "urgent_48h",
+              "message": "Progressive weakness in your leg requires medical assessment within 48 hours. Please contact your doctor promptly.",
+              "action": "URGENT_REFERRAL_48H",
+              "halt_tree": true
+            },
+            "if_no": { "action": "RECOMMEND_CLINICAL_ASSESSMENT_1_WEEK" }
+          }
+        },
+        {
+          "id": "rad_slr_proxy",
+          "text": "Try this: sit on a chair and slowly straighten one leg out in front of you. Does this reproduce your leg pain or tingling?",
+          "uiType": "radio",
+          "options": [
+            { "label": "No — no change in symptoms", "value": "negative", "score": 0 },
+            { "label": "Maybe — some mild discomfort", "value": "equivocal", "score": 1 },
+            { "label": "Yes — it clearly reproduces my leg symptoms", "value": "positive", "score": 2 }
+          ],
+          "allowMultiple": false,
+          "maxScore": 2,
+          "mapsTo": "slrProxyResult",
+          "sourceInstrument": "Seated SLR proxy (self-reported)"
+        }
+      ]
+    },
+
+    {
+      "id": "LBP_BUTTOCK_001",
+      "type": "differential_assessment",
+      "phase": "investigation",
+      "description": "Assess buttock pain pattern to differentiate sacroiliac, piriformis, or hip-referred causes",
+      "next": "LBP_AGGRAVATING_001",
+      "questions": [
+        {
+          "id": "but_laterality",
+          "text": "Is the buttock pain on one side or both sides?",
+          "uiType": "radio",
+          "options": [
+            { "label": "One side only (left or right)", "value": "unilateral", "score": 1 },
+            { "label": "Both sides equally", "value": "bilateral", "score": 0 },
+            { "label": "Mostly one side but sometimes both", "value": "predominantly_unilateral", "score": 1 }
+          ],
+          "allowMultiple": false,
+          "maxScore": 1,
+          "mapsTo": "buttockLaterality"
+        },
+        {
+          "id": "but_thigh",
+          "text": "Does the pain travel down the back of your thigh?",
+          "uiType": "radio",
+          "options": [
+            { "label": "No — stays in the buttock only", "value": "buttock_only", "score": 0 },
+            { "label": "Yes — goes into the back of my thigh", "value": "posterior_thigh", "score": 1 },
+            { "label": "Yes — and sometimes into the calf", "value": "posterior_thigh_and_calf", "score": 2 }
+          ],
+          "allowMultiple": false,
+          "maxScore": 2,
+          "mapsTo": "buttockThighReferral",
+          "clinicalSignificance": {
+            "posterior_thigh": "suggests_piriformis_or_si_joint",
+            "posterior_thigh_and_calf": "suggests_pseudo_sciatica_or_nerve_involvement"
+          }
+        },
+        {
+          "id": "but_sitting",
+          "text": "Does sitting on a hard surface make the buttock pain worse?",
+          "uiType": "radio",
+          "options": [
+            { "label": "No difference", "value": "no_difference", "score": 0 },
+            { "label": "Yes — hard surfaces make it worse", "value": "worse_hard_surface", "score": 1 },
+            { "label": "Yes — and I shift to one side to avoid it", "value": "weight_shifting", "score": 2 }
+          ],
+          "allowMultiple": false,
+          "maxScore": 2,
+          "mapsTo": "buttockSittingPain",
+          "clinicalSignificance": {
+            "worse_hard_surface": "suggests_piriformis_or_ischial",
+            "weight_shifting": "strongly_suggests_piriformis"
+          }
+        },
+        {
+          "id": "but_stairs",
+          "text": "Does the pain change when walking, climbing stairs, or turning in bed?",
+          "uiType": "radio",
+          "options": [
+            { "label": "No change with these activities", "value": "no_change", "score": 0 },
+            { "label": "Stairs or walking make it worse", "value": "stairs_walking_worse", "score": 1 },
+            { "label": "Turning in bed or rolling over triggers it", "value": "turning_in_bed", "score": 2 },
+            { "label": "Both stairs and turning in bed aggravate it", "value": "both", "score": 2 }
+          ],
+          "allowMultiple": false,
+          "maxScore": 2,
+          "mapsTo": "buttockMovementPain",
+          "clinicalSignificance": {
+            "stairs_walking_worse": "suggests_si_joint_or_hip",
+            "turning_in_bed": "strongly_suggests_si_joint",
+            "both": "suggests_si_joint_dysfunction"
+          }
+        },
+        {
+          "id": "but_hip",
+          "text": "Do you notice any clicking, catching, or grinding in your hip joint?",
+          "uiType": "radio",
+          "options": [
+            { "label": "No", "value": "none", "score": 0 },
+            { "label": "Yes — occasional clicking or popping", "value": "clicking", "score": 1 },
+            { "label": "Yes — grinding or stiffness in the hip", "value": "grinding", "score": 2 }
+          ],
+          "allowMultiple": false,
+          "maxScore": 2,
+          "mapsTo": "hipSymptoms",
+          "clinicalSignificance": {
+            "clicking": "suggests_hip_impingement_or_labral",
+            "grinding": "suggests_hip_osteoarthritis"
+          }
+        }
+      ]
+    },
+
+    {
+      "id": "LBP_AGGRAVATING_001",
+      "type": "symptom_profiling",
+      "phase": "understanding",
+      "description": "Collect aggravating and easing factors",
+      "next": "LBP_FUNCTIONAL_001",
+      "questions": [
+        {
+          "id": "sp_aggravating",
+          "text": "What makes your back pain worse? Select all that apply.",
+          "uiType": "multi_select",
+          "options": [
+            { "label": "Bending forward", "value": "flexion", "score": 1 },
+            { "label": "Bending backward", "value": "extension", "score": 1 },
+            { "label": "Sitting for long periods", "value": "sitting", "score": 1 },
+            { "label": "Standing for long periods", "value": "standing", "score": 1 },
+            { "label": "Lifting heavy things", "value": "lifting", "score": 1 },
+            { "label": "Walking", "value": "walking", "score": 1 }
+          ],
+          "allowMultiple": true,
+          "maxScore": 6,
+          "scoreCap": 4,
+          "mapsTo": "aggravatingFactors",
+          "clinicalSignificance": {
+            "flexion": "suggests_disc_or_muscle",
+            "extension": "suggests_facet_or_stenosis",
+            "sitting": "suggests_disc_or_postural",
+            "standing": "suggests_stenosis_or_spondylosis"
+          }
+        },
+        {
+          "id": "sp_easing",
+          "text": "What helps ease your back pain? Select all that apply.",
+          "uiType": "multi_select",
+          "options": [
+            { "label": "Rest or lying down", "value": "rest", "score": 0 },
+            { "label": "Movement or walking", "value": "movement", "score": 0 },
+            { "label": "Stretching", "value": "stretching", "score": 0 },
+            { "label": "Heat or warm bath", "value": "heat", "score": 0 },
+            { "label": "Ice or cold pack", "value": "ice", "score": 0 },
+            { "label": "Medication", "value": "medication", "score": 0 },
+            { "label": "Nothing really helps", "value": "nothing", "score": 1 }
+          ],
+          "allowMultiple": true,
+          "maxScore": 1,
+          "mapsTo": "easingFactors"
+        }
+      ]
+    },
+
+    {
+      "id": "LBP_FUNCTIONAL_001",
+      "type": "functional_assessment",
+      "phase": "impact_measurement",
+      "next": "LBP_HYPOTHESIS_001",
+      "scoring": {
+        "method": "sum",
+        "mapsTo": "functionalScore",
+        "interpretation": {
+          "0-2": "minimal_functional_impact",
+          "3-5": "moderate_functional_impact",
+          "6-9": "severe_functional_impact"
+        },
+        "interpretationMapsTo": "functionalImpact"
+      },
+      "questions": [
+        {
+          "id": "fn_sleep",
+          "text": "How much does your back pain affect your sleep?",
+          "uiType": "radio",
+          "options": [
+            { "label": "Not at all", "value": "0", "score": 0 },
+            { "label": "Occasionally disturbs my sleep", "value": "1", "score": 1 },
+            { "label": "Regularly disturbs my sleep", "value": "2", "score": 2 },
+            { "label": "Severely impacts my sleep most nights", "value": "3", "score": 3 }
+          ],
+          "allowMultiple": false,
+          "maxScore": 3,
+          "mapsTo": "functionalImpact.sleep",
+          "sourceInstrument": "ODI sleep items"
+        },
+        {
+          "id": "fn_work",
+          "text": "How much does your back pain affect your ability to work or do daily tasks?",
+          "uiType": "radio",
+          "options": [
+            { "label": "Not at all", "value": "0", "score": 0 },
+            { "label": "I modify some tasks but manage", "value": "1", "score": 1 },
+            { "label": "I avoid several tasks because of the pain", "value": "2", "score": 2 },
+            { "label": "I struggle with most daily tasks", "value": "3", "score": 3 }
+          ],
+          "allowMultiple": false,
+          "maxScore": 3,
+          "mapsTo": "functionalImpact.work",
+          "sourceInstrument": "ODI work/ADL items"
+        },
+        {
+          "id": "fn_exercise",
+          "text": "How has your back pain affected your exercise or physical activity?",
+          "uiType": "radio",
+          "options": [
+            { "label": "No change", "value": "0", "score": 0 },
+            { "label": "I've reduced some activities", "value": "1", "score": 1 },
+            { "label": "I've significantly reduced activity", "value": "2", "score": 2 },
+            { "label": "I've stopped exercising entirely", "value": "3", "score": 3 }
+          ],
+          "allowMultiple": false,
+          "maxScore": 3,
+          "mapsTo": "functionalImpact.exercise",
+          "sourceInstrument": "ODI recreation items"
+        }
+      ]
+    },
+
+    {
+      "id": "LBP_HYPOTHESIS_001",
+      "type": "hypothesis_generation",
+      "phase": "clinical_reasoning",
+      "next": "LBP_ASSESS_REC_001",
+      "rules": [
+        {
+          "id": "hyp_postural_lbp",
+          "displayName": "Postural Low Back Pain",
+          "criteria": {
+            "ALL": [{ "field": "radiation", "equals": "localized" }],
+            "ANY": [
+              { "field": "aggravatingFactors", "contains": "sitting" },
+              { "field": "aggravatingFactors", "contains": "standing" }
+            ]
+          },
+          "confidence": "high",
+          "recommendedGames": ["NN2", "FA3", "BB1"],
+          "contraindicatedGames": []
+        },
+        {
+          "id": "hyp_flexion_intolerant",
+          "displayName": "Flexion Intolerant LBP",
+          "criteria": {
+            "ANY": [
+              { "field": "aggravatingFactors", "contains": "flexion" },
+              { "field": "aggravatingFactors", "contains": "lifting" }
+            ]
+          },
+          "confidence": "medium",
+          "recommendedGames": ["FA1", "FA2", "NN1", "NN3"],
+          "contraindicatedGames": ["FA5"]
+        },
+        {
+          "id": "hyp_extension_intolerant",
+          "displayName": "Extension Intolerant LBP",
+          "criteria": {
+            "ANY": [{ "field": "aggravatingFactors", "contains": "extension" }]
+          },
+          "confidence": "medium",
+          "recommendedGames": ["FA1", "FA4", "NN2"],
+          "contraindicatedGames": []
+        },
+        {
+          "id": "hyp_radicular",
+          "displayName": "Radicular Pain Pattern",
+          "criteria": {
+            "ANY": [
+              { "field": "radiation", "equals": "radicular_below_knee" },
+              { "field": "radiation", "equals": "radicular_above_knee" },
+              { "field": "neuroDeficit", "containsAny": ["sensory", "motor", "sensorimotor"] }
+            ]
+          },
+          "confidence": "medium",
+          "recommendedGames": ["KS1", "FA1", "BB2"],
+          "contraindicatedGames": ["FA5", "NN5"]
+        },
+        {
+          "id": "hyp_deconditioning",
+          "displayName": "Deconditioning Pattern",
+          "criteria": {
+            "ALL": [
+              { "field": "activityLevel", "containsAny": ["sedentary", "lightly_active", "light"] },
+              { "field": "functionalImpact", "containsAny": ["moderate_functional_impact", "severe_functional_impact"] }
+            ]
+          },
+          "confidence": "medium",
+          "recommendedGames": ["BB1", "BB2", "NN1"],
+          "contraindicatedGames": []
+        },
+        {
+          "id": "hyp_si_joint",
+          "displayName": "Sacroiliac Joint Dysfunction",
+          "criteria": {
+            "ALL": [
+              { "field": "radiation", "equals": "buttock_referral" },
+              { "field": "buttockMovementPain", "containsAny": ["turning_in_bed", "stairs_walking_worse", "both"] }
+            ]
+          },
+          "confidence": "moderate",
+          "recommendedGames": ["BB1", "BB2", "FA3"],
+          "contraindicatedGames": []
+        },
+        {
+          "id": "hyp_piriformis",
+          "displayName": "Piriformis Syndrome",
+          "criteria": {
+            "ALL": [
+              { "field": "radiation", "equals": "buttock_referral" },
+              { "field": "buttockSittingPain", "containsAny": ["worse_hard_surface", "weight_shifting"] },
+              { "field": "buttockThighReferral", "containsAny": ["posterior_thigh", "posterior_thigh_and_calf"] }
+            ]
+          },
+          "confidence": "moderate",
+          "recommendedGames": ["FA3", "FA1", "NN2"],
+          "contraindicatedGames": ["FA5"]
+        }
+      ]
+    },
+
+    {
+      "id": "LBP_ASSESS_REC_001",
+      "type": "assessment_recommendation",
+      "phase": "testing",
+      "maxGamesPerSession": 3,
+      "next_after_games": "LBP_INTERPRET_001"
+    },
+
+    {
+      "id": "LBP_INTERPRET_001",
+      "type": "score_interpretation",
+      "phase": "analysis",
+      "next": "LBP_CARE_MATCH_001"
+    },
+
+    {
+      "id": "LBP_CARE_MATCH_001",
+      "type": "care_pathway_matching",
+      "phase": "recommendation",
+      "careMatchingRules": [
+        {
+          "ruleId": "care_lbp_self_manage",
+          "pathwayId": "cp_lbp_self_manage",
+          "matchCriteria": {
+            "ALL": [
+              { "field": "severity", "lessThan": 4 },
+              { "field": "functionalImpact", "equals": "minimal_functional_impact" },
+              { "field": "duration", "equals": "acute_0_6_weeks" }
+            ]
+          }
+        },
+        {
+          "ruleId": "care_lbp_guided",
+          "pathwayId": "cp_lbp_guided",
+          "matchCriteria": {
+            "ANY": [
+              { "field": "severity", "between": [4, 6] },
+              { "field": "functionalImpact", "equals": "moderate_functional_impact" }
+            ]
+          }
+        },
+        {
+          "ruleId": "care_lbp_intensive",
+          "pathwayId": "cp_lbp_intensive",
+          "matchCriteria": {
+            "ANY": [
+              { "field": "severity", "greaterThan": 6 },
+              { "field": "functionalImpact", "equals": "severe_functional_impact" },
+              { "field": "duration", "equals": "chronic_over_12_weeks" }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+
+  "layers": {
+    "layer0": { "name": "Red Flag Screen", "questions": [] },
+    "layer1": { "name": "Symptom Profile", "questions": [] },
+    "layer2": { "name": "Functional Impact", "questions": [] },
+    "layer3": { "name": "Risk Modifiers", "questions": [] }
+  },
+  "riskTierThresholds": {
+    "low": [0, 4],
+    "moderate": [5, 8],
+    "high": [9, 100]
+  },
+  "hypothesisRules": [
+    {
+      "id": "hyp_postural_lbp",
+      "displayName": "Postural Low Back Pain",
+      "criteria": {
+        "ALL": [{ "field": "radiation", "equals": "localized" }],
+        "ANY": [
+          { "field": "aggravatingFactors", "contains": "sitting" },
+          { "field": "aggravatingFactors", "contains": "standing" }
+        ]
+      },
+      "confidence": "high",
+      "recommendedGames": ["NN2", "FA3", "BB1"],
+      "contraindicatedGames": []
+    },
+    {
+      "id": "hyp_flexion_intolerant",
+      "displayName": "Flexion Intolerant LBP",
+      "criteria": {
+        "ANY": [
+          { "field": "aggravatingFactors", "contains": "flexion" },
+          { "field": "aggravatingFactors", "contains": "lifting" }
+        ]
+      },
+      "confidence": "medium",
+      "recommendedGames": ["FA1", "FA2", "NN1", "NN3"],
+      "contraindicatedGames": ["FA5"]
+    },
+    {
+      "id": "hyp_extension_intolerant",
+      "displayName": "Extension Intolerant LBP",
+      "criteria": {
+        "ANY": [{ "field": "aggravatingFactors", "contains": "extension" }]
+      },
+      "confidence": "medium",
+      "recommendedGames": ["FA1", "FA4", "NN2"],
+      "contraindicatedGames": []
+    },
+    {
+      "id": "hyp_radicular",
+      "displayName": "Radicular Pain Pattern",
+      "criteria": {
+        "ANY": [
+          { "field": "radiation", "equals": "radicular_below_knee" },
+          { "field": "radiation", "equals": "radicular_above_knee" },
+          { "field": "neuroDeficit", "containsAny": ["sensory", "motor", "sensorimotor"] }
+        ]
+      },
+      "confidence": "medium",
+      "recommendedGames": ["KS1", "FA1", "BB2"],
+      "contraindicatedGames": ["FA5", "NN5"],
+      "crossScanTarget": "sciatica"
+    },
+    {
+      "id": "hyp_deconditioning",
+      "displayName": "Deconditioning Pattern",
+      "criteria": {
+        "ALL": [
+          { "field": "activityLevel", "containsAny": ["sedentary", "lightly_active", "light"] },
+          { "field": "functionalImpact", "containsAny": ["moderate_functional_impact", "severe_functional_impact"] }
+        ]
+      },
+      "confidence": "medium",
+      "recommendedGames": ["BB1", "BB2", "NN1"],
+      "contraindicatedGames": []
+    }
+  ],
+  "careMatchingRules": [],
+  "disclaimers": {
+    "standard": "Kriya QuickScan is a self-reported wellness risk tool. It is not a medical diagnosis and should not replace professional medical advice. If you are experiencing a medical emergency, call 112 immediately.",
+    "moduleSpecific": ""
+  },
+  "_clinicalNotes": {
+    "rf_cauda_equina": "CES screening per NICE NG59. Any positive triggers immediate halt. CES is a surgical emergency.",
+    "rf_fracture": "Fracture risk with follow-up for age/osteoporosis. Two-stage screening per NICE NG59.",
+    "rf_cancer": "Systemic red flags per NICE NG59. Weight loss + cancer history triggers cancer pathway.",
+    "rf_infection": "Infection red flags. Fever + recent surgery/IV drugs triggers infection pathway.",
+    "sp_duration": "Duration classification: acute (<6w), subacute (6-12w), chronic (>12w).",
+    "sp_severity": "NPRS 0-10. Severity >= 8 triggers clinician referral recommendation.",
+    "sp_radiation": "Primary differentiator between mechanical LBP and radicular pain. Below-knee radiation strongly suggests nerve root involvement.",
+    "sp_aggravating": "Flexion intolerance suggests disc/muscle, extension suggests facet/stenosis, sitting suggests disc/postural.",
+    "LBP_RADICULAR_001": "Branch node for radicular investigation. Dermatomal pattern, neuro deficit, seated SLR proxy.",
+    "LBP_FUNCTIONAL_001": "Functional impact scoring: sum of sleep + work + exercise (0-9). 0-2 minimal, 3-5 moderate, 6-9 severe.",
+    "LBP_HYPOTHESIS_001": "Auto-computed. Five hypothesis rules: postural, flexion-intolerant, extension-intolerant, radicular, deconditioning.",
+    "scoring": "Risk now uses additive factor scoring (Phase 2 Step 2.1), not weighted layer percentages."
+  }
+}
