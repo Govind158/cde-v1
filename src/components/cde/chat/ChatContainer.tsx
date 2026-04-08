@@ -6,8 +6,8 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
 import { useScanStore } from '@/stores/scan-store';
+import type { RiskTier } from '@/types/cde';
 import ChatMessage, { TypingIndicator } from './ChatMessage';
 import ChatInput from './ChatInput';
 import OptionSelector from './OptionSelector';
@@ -15,9 +15,12 @@ import SeveritySlider from './SeveritySlider';
 import RedFlagAlert from './RedFlagAlert';
 import DisclaimerBanner from '../shared/DisclaimerBanner';
 import ProgressBar from '../shared/ProgressBar';
+import RiskTierBadge from '../results/RiskTierBadge';
+import MusculageSummary from '../results/MusculageSummary';
+import CarePathwayCard from '../results/CarePathwayCard';
+import CrossScanCard from '../results/CrossScanCard';
 
 export default function ChatContainer() {
-  const router = useRouter();
   const {
     messages,
     isTyping,
@@ -27,20 +30,22 @@ export default function ChatContainer() {
     currentLayer,
     progressPercent,
     recommendedGames,
+    results,
     sendMessage,
     submitAnswer,
     skipGames,
     resetScan,
+    completeScan,
   } = useScanStore();
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Navigate to results page when session finalizes
+  // Fetch and store results inline when session finalizes — no page navigation
   useEffect(() => {
     if (status === 'results' && sessionId) {
-      router.push(`/app/scan/results/${sessionId}`);
+      completeScan();
     }
-  }, [status, sessionId, router]);
+  }, [status, sessionId, completeScan]);
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
@@ -160,6 +165,48 @@ export default function ChatContainer() {
         )}
 
         {isTyping && <TypingIndicator />}
+
+        {/* Inline results — rendered below chat when assessment is complete */}
+        {status === 'completed' && results && (
+          <div className="px-4 pb-2 space-y-3">
+            <div className="pt-3 pb-1">
+              <p className="text-xs font-medium uppercase tracking-wider text-slate-500">Your Results</p>
+            </div>
+
+            <RiskTierBadge
+              tier={(results.summary.riskTier ?? results.summary.riskLevel ?? 'GREEN') as RiskTier}
+              description={`Your assessment is complete — ${String(results.summary.riskTier ?? results.summary.riskLevel ?? 'GREEN')} risk level`}
+            />
+
+            <MusculageSummary
+              score={(results.summary.musculageScore as number | undefined) ?? results.musculageScore ?? 0}
+              age={null}
+              breakdown={[
+                { label: 'BAL', value: ((results.summary.parameterScores as Record<string, number | null> | undefined)?.BAL) ?? null },
+                { label: 'ROM', value: ((results.summary.parameterScores as Record<string, number | null> | undefined)?.ROM) ?? null },
+                { label: 'MOB', value: ((results.summary.parameterScores as Record<string, number | null> | undefined)?.MOB) ?? null },
+                { label: 'REF', value: ((results.summary.parameterScores as Record<string, number | null> | undefined)?.REF) ?? null },
+              ]}
+            />
+
+            {results.careRecommendation && (
+              <CarePathwayCard
+                name={(results.careRecommendation as Record<string, unknown>).name as string ?? 'Care Program'}
+                durationWeeks={(results.careRecommendation as Record<string, unknown>).durationWeeks as number ?? 8}
+                providerTypes={(results.careRecommendation as Record<string, unknown>).providerTypes as string[] ?? []}
+                description={(results.careRecommendation as Record<string, unknown>).description as string ?? ''}
+              />
+            )}
+
+            {results.crossScans.length > 0 && results.crossScans.map((cs, idx) => (
+              <CrossScanCard
+                key={idx}
+                targetModule={(cs as Record<string, unknown>).targetModule as string ?? ''}
+                reason={(cs as Record<string, unknown>).reason as string ?? ''}
+              />
+            ))}
+          </div>
+        )}
 
         {/* Completion actions */}
         {isAssessmentComplete && !isTyping && (

@@ -14,6 +14,7 @@ import type {
   CareRecommendationData,
   GameRecommendation,
 } from '@/types/cde';
+import { createDefaultFactStore } from '@/types/cde';
 import { FactStoreManager } from './fact-store';
 import { TreeWalker } from './tree-walker';
 import { AuditLogger } from './audit-logger';
@@ -108,8 +109,10 @@ export class CDEEngine {
     }
 
     const factStore = new FactStoreManager(initialFacts);
+    // Mark tree as active so ChatOrchestrator's processMessage guard blocks free-text LLM
+    // extraction during structured question flow.
+    factStore.set('_treeActive', true);
     const walker = new TreeWalker(tree, factStore);
-    const auditLogger = new AuditLogger('', CDE_ENGINE_VERSION, tree.version);
 
     // Create database record
     let sessionId: string;
@@ -146,6 +149,143 @@ export class CDEEngine {
     const firstOutput = walker.evaluateCurrentNode();
 
     return { sessionId, firstOutput };
+  }
+
+  /**
+   * Start a PRE_TREE session — no tree loaded, no questions yet.
+   * The user will type their first message and LLM extracts bodyRegion before the tree fires.
+   */
+  static async startPreTreeSession(params: {
+    userId?: string;
+  }): Promise<{ sessionId: string; prompt: string }> {
+    let sessionId: string;
+    try {
+      const [session] = await db
+        .insert(cdeScanSessions)
+        .values({
+          userId: params.userId ?? null,
+          sessionType: 'location',
+          decisionTreeId: 'DT_PENDING',
+          decisionTreeVersion: '0.0.0',
+          status: 'pre_tree',
+          currentLayer: 0,
+          factStore: createDefaultFactStore() as unknown as Record<string, unknown>,
+          engineVersion: CDE_ENGINE_VERSION,
+          prePopulatedFrom: null,
+          conversationHistory: [],
+          layerScores: {},
+          conditionTags: [],
+        })
+        .returning();
+      sessionId = session.id;
+    } catch {
+      sessionId = crypto.randomUUID();
+    }
+
+    return {
+      sessionId,
+      prompt: "Hi! I'm Myo, your musculoskeletal health assistant. What's been bothering you? Tell me in your own words.",
+    };
+  }
+
+  /**
+   * Activate a tree for a PRE_TREE session once bodyRegion has been extracted.
+   * Loads the correct tree, initialises TreeWalker, updates session status to 'active',
+   * and returns the first red-flag screening question.
+   */
+  static async activateTree(
+    sessionId: string,
+    bodyRegion: string,
+    intent: string
+  ): Promise<CDEOutput> {
+    // Resolve tree ID from bodyRegion
+    let treeId = getTreeIdForRegion(bodyRegion);
+    if (!treeId) {
+      treeId = `DT_${bodyRegion.toUpperCase().replace(/\s+/g, '_')}`;
+    }
+
+    // Load tree
+    let tree: DecisionTree;
+    try {
+      tree = await loadTree(treeId);
+    } catch {
+      tree = CDEEngine.createMinimalTree(treeId);
+    }
+
+    // Load existing factStore from DB (has bodyRegion + intent already written by orchestrator)
+    let factStore: FactStoreManager;
+    try {
+      const session = await db.query.cdeScanSessions.findFirst({
+        where: eq(cdeScanSessions.id, sessionId),
+      });
+      factStore = session
+        ? FactStoreManager.fromJSON((session.factStore ?? {}) as Record<string, unknown>)
+        : new FactStoreManager({ bodyRegion, intent } as Partial<FactStore>);
+    } catch {
+      factStore = new FactStoreManager({ bodyRegion, intent } as Partial<FactStore>);
+    }
+
+    // Ensure bodyRegion is set (may have been written already by orchestrator)
+    if (!factStore.get('bodyRegion')) {
+      factStore.set('bodyRegion', bodyRegion);
+    }
+
+    // Create walker and cache it
+    const walker = new TreeWalker(tree, factStore);
+    // Mark tree as active BEFORE persisting factStore to DB so the guard in
+    // ChatOrchestrator.processMessage() sees it on the very first message after tree activation.
+    factStore.set('_treeActive', true);
+    setCachedWalker(sessionId, walker);
+
+    // Update DB: real tree ID + status active
+    try {
+      await db
+        .update(cdeScanSessions)
+        .set({
+          decisionTreeId: tree.id,
+          decisionTreeVersion: tree.version,
+          status: 'active',
+          factStore: factStore.toJSON(),
+        })
+        .where(eq(cdeScanSessions.id, sessionId));
+    } catch {
+      // DB unavailable
+    }
+
+    // Audit: log tree activation event
+    const auditLogger = new AuditLogger(sessionId, CDE_ENGINE_VERSION, tree.version);
+    auditLogger.setFlushFunction(async (entries) => {
+      try {
+        if (entries.length > 0) {
+          await db.insert(cdeAuditLog).values(
+            entries.map((e) => ({
+              sessionId,
+              eventType: e.eventType,
+              layer: e.layer ?? null,
+              nodeId: e.nodeId ?? null,
+              ruleId: e.ruleId ?? null,
+              factsEvaluated: e.factsEvaluated,
+              ruleFired: e.ruleFired,
+              output: e.output,
+              engineVersion: e.engineVersion,
+              treeVersion: e.treeVersion,
+              requiresClinicianReview: false,
+            }))
+          );
+        }
+      } catch {
+        // Silently fail
+      }
+    });
+    auditLogger.logRuleEvaluated(
+      'pre_tree_extraction',
+      { bodyRegion, intent, treeSelected: tree.id },
+      true,
+      { treeId: tree.id, treeVersion: tree.version }
+    );
+    await auditLogger.flush();
+
+    return walker.evaluateCurrentNode();
   }
 
   /**

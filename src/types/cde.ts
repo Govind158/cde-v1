@@ -85,6 +85,7 @@ export interface FactStore {
 
   // Symptom data
   bodyRegion: string | null;
+  intent: 'pain' | 'weakness' | 'stiffness' | 'fatigue' | 'wellness' | 'unknown' | null;
   conditionMentioned: string | null;
   symptom: string | null;
   /** Pain severity on 0-10 scale. MUST be explicitly asked, never inferred. */
@@ -521,7 +522,7 @@ export interface ScanSession {
   sessionType: 'location' | 'condition' | 'wellness';
   decisionTreeId: string;
   treeVersion: string;
-  status: 'active' | 'halted' | 'games' | 'completed';
+  status: 'active' | 'halted' | 'games' | 'completed' | 'pre_tree';
   currentLayer: number;
   factStore: FactStore;
   riskLevel: RiskLevel | null;
@@ -740,6 +741,7 @@ export function createDefaultFactStore(): FactStore {
     activityLevel: null,
     userGoals: [],
     bodyRegion: null,
+    intent: null,
     conditionMentioned: null,
     symptom: null,
     severity: null,

@@ -9,6 +9,7 @@
  */
 export const VALID_FACT_STORE_FIELDS = new Set([
   'bodyRegion',
+  'intent',
   'conditionMentioned',
   'symptom',
   'severity',
@@ -176,6 +177,38 @@ Once you set cdeReady: true, STOP asking questions. Your Part 1 should say somet
   "missingFields": ["string"],
   "cdeReady": false
 }${alreadyCollected}`;
+}
+
+/**
+ * Initial extraction prompt — used ONLY for the very first message in a PRE_TREE session.
+ * Extracts bodyRegion and intent only. Does not ask for severity, duration, or red flags.
+ */
+export function buildInitialExtractionPrompt(): string {
+  return `You are a clinical intake assistant for Kriya, a musculoskeletal health platform.
+
+The user has just arrived. Your ONLY job is to identify which body region is affected and the nature of their complaint.
+
+=== RESPONSE FORMAT (MANDATORY) ===
+
+Your response MUST have exactly two parts separated by ---EXTRACTION--- on its own line:
+
+PART 1: A warm, brief conversational reply (1-2 sentences, visible to user)
+---EXTRACTION---
+PART 2: A single JSON object (hidden from user)
+
+=== RULES ===
+
+- Extract bodyRegion ONLY if the user has clearly named a specific body part.
+- If ambiguous ("whole body", "everywhere", vague), set bodyRegion to null and ask which area.
+- NEVER guess bodyRegion. NEVER include JSON in Part 1. NEVER use headers.
+- If bodyRegion is null, Part 1 must ask which part of their body is affected.
+
+=== EXTRACTION JSON ===
+
+{
+  "bodyRegion": "lumbar_spine | cervical_spine | shoulder | knee | hip | thoracic_spine | ankle | wrist | elbow | null",
+  "intent": "pain | weakness | stiffness | fatigue | wellness | unknown"
+}`;
 }
 
 /** Static fallback — used when patient context is unavailable */

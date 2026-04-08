@@ -6,7 +6,7 @@
 import type { CDEOutput, ChatMessage, FactStore, RiskLevel } from '@/types/cde';
 import { CDEEngine } from '../engine';
 import { callClaude } from './llm-client';
-import { buildExtractionPrompt } from './extraction-prompt';
+import { buildExtractionPrompt, buildInitialExtractionPrompt } from './extraction-prompt';
 import { buildFormattingPrompt } from './formatting-prompt';
 import { parseExtraction } from './extraction-parser';
 import { evaluateRedFlags } from '../safety/red-flag-engine';
@@ -49,6 +49,97 @@ export class ChatOrchestrator {
     const factStore = FactStoreManager.fromJSON(
       (session.factStore ?? {}) as Record<string, unknown>
     );
+
+    // ── PRE_TREE branch ────────────────────────────────────────────────────────
+    // Session has no tree yet. Use the initial extraction prompt to get bodyRegion
+    // + intent only. Once bodyRegion is confirmed, activate the tree.
+    if ((session as unknown as { status: string }).status === 'pre_tree') {
+      // Add user message to history
+      const userMsgPre: ChatMessage = {
+        id: crypto.randomUUID(),
+        role: 'user',
+        content: userMessage,
+        timestamp: new Date().toISOString(),
+      };
+      conversationHistory.push(userMsgPre);
+
+      // Call LLM with the lightweight initial extraction prompt
+      let preConversationResponse = '';
+      let preBodyRegion: string | null = null;
+      let preIntent = 'unknown';
+      try {
+        const llmResp = await callClaude(
+          buildInitialExtractionPrompt(),
+          [{ role: 'user', content: userMessage }]
+        );
+        // Parse the ---EXTRACTION--- block
+        const parts = llmResp.split(/\n---EXTRACTION---\n/);
+        preConversationResponse = parts[0]?.trim() ?? llmResp;
+        if (parts[1]) {
+          try {
+            const extracted = JSON.parse(parts[1].trim()) as {
+              bodyRegion?: string | null;
+              intent?: string;
+            };
+            preBodyRegion = extracted.bodyRegion ?? null;
+            preIntent = extracted.intent ?? 'unknown';
+          } catch {
+            // JSON parse failed — bodyRegion stays null
+          }
+        }
+      } catch {
+        preConversationResponse =
+          "I'm here to help. Could you tell me which part of your body is bothering you?";
+      }
+
+      let cdePre: CDEOutput | null = null;
+
+      if (preBodyRegion) {
+        // bodyRegion confirmed — write to factStore, activate tree
+        factStore.set('bodyRegion', preBodyRegion);
+        factStore.set('intent', preIntent);
+        try {
+          cdePre = await CDEEngine.activateTree(sessionId, preBodyRegion, preIntent);
+        } catch {
+          // Tree activation failed — continue as chat
+        }
+      } else {
+        // Check how many clarification attempts have been made
+        const userTurns = conversationHistory.filter((m) => m.role === 'user').length;
+        if (userTurns >= 3) {
+          preConversationResponse =
+            "I want to make sure I understand you correctly. Could you briefly describe which specific area — for example, your lower back, knee, or shoulder — is giving you trouble?";
+        }
+      }
+
+      // Save updated conversation history + factStore
+      const assistantMsgPre: ChatMessage = {
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        content: preConversationResponse,
+        timestamp: new Date().toISOString(),
+        cdeOutput: cdePre ?? undefined,
+      };
+      conversationHistory.push(assistantMsgPre);
+      try {
+        await db
+          .update(cdeScanSessions)
+          .set({
+            factStore: factStore.toJSON(),
+            conversationHistory: conversationHistory as unknown as Record<string, unknown>[],
+          })
+          .where(eq(cdeScanSessions.id, sessionId));
+      } catch {
+        // DB unavailable
+      }
+
+      return {
+        conversationResponse: preConversationResponse,
+        cdeOutput: cdePre,
+        sessionState: { currentLayer: 0, progressPercent: 0 },
+      };
+    }
+    // ── END PRE_TREE branch ────────────────────────────────────────────────────
 
     // Tree-active guard: once the CDE tree has fired, reject free-text and tell user to use buttons.
     // Check three independent signals — any one being true means the tree is running:

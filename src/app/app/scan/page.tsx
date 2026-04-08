@@ -7,7 +7,6 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useScanStore } from '@/stores/scan-store';
-import BodyMapSelector from '@/components/cde/chat/BodyMapSelector';
 import DisclaimerBanner from '@/components/cde/shared/DisclaimerBanner';
 
 const CONDITIONS = [
@@ -22,12 +21,11 @@ const CONDITIONS = [
 
 export default function ScanPage() {
   const router = useRouter();
-  const { startScan } = useScanStore();
-  const [showBodyMap, setShowBodyMap] = useState(false);
+  const { startScan, startChatFirst } = useScanStore();
   const [showConditions, setShowConditions] = useState(false);
 
-  const handleLocationScan = async (bodyRegion: string) => {
-    await startScan('location', bodyRegion);
+  const handleChatFirstScan = async () => {
+    await startChatFirst();
     const sessionId = useScanStore.getState().sessionId;
     if (sessionId) router.push(`/app/scan/${sessionId}`);
   };
@@ -43,17 +41,6 @@ export default function ScanPage() {
     const sessionId = useScanStore.getState().sessionId;
     if (sessionId) router.push(`/app/scan/${sessionId}`);
   };
-
-  if (showBodyMap) {
-    return (
-      <div className="min-h-screen bg-[#020617] px-4 py-8">
-        <button onClick={() => setShowBodyMap(false)} className="mb-4 text-sm text-slate-400 hover:text-slate-200">
-          ← Back
-        </button>
-        <BodyMapSelector onSelect={handleLocationScan} />
-      </div>
-    );
-  }
 
   if (showConditions) {
     return (
@@ -90,7 +77,7 @@ export default function ScanPage() {
         <div className="space-y-3">
           {/* Pain/Discomfort */}
           <button
-            onClick={() => setShowBodyMap(true)}
+            onClick={handleChatFirstScan}
             className="w-full rounded-2xl border border-white/10 bg-white/5 p-5 text-left transition-all hover:bg-white/10 hover:border-blue-500/20 animate-fade-in-up"
             style={{ animationDelay: '0ms' }}
           >

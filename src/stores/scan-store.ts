@@ -19,7 +19,7 @@ interface ScanState {
   // Session
   sessionId: string | null;
   sessionType: 'location' | 'condition' | 'wellness' | null;
-  status: 'idle' | 'active' | 'halted' | 'games' | 'results' | 'completed';
+  status: 'idle' | 'active' | 'pre_tree' | 'halted' | 'games' | 'results' | 'completed';
 
   // Conversation
   messages: ChatMessage[];
@@ -45,6 +45,7 @@ interface ScanState {
   } | null;
 
   // Actions
+  startChatFirst: () => Promise<void>;
   startScan: (
     entryType: 'location' | 'condition' | 'wellness',
     bodyRegion?: string,
@@ -83,6 +84,29 @@ export const useScanStore = create<ScanState>()(
   persist(
     (set, get) => ({
       ...initialState,
+
+      startChatFirst: async () => {
+        set({ status: 'pre_tree', sessionType: 'location', messages: [], isTyping: true });
+
+        const res = await apiClient.post<{
+          sessionId: string;
+          status: 'pre_tree';
+          prompt: string;
+        }>('/api/cde/scan/start', {});
+
+        if (res.success && res.data) {
+          const { sessionId, prompt } = res.data;
+          const welcomeMsg: ChatMessage = {
+            id: crypto.randomUUID(),
+            role: 'assistant',
+            content: prompt,
+            timestamp: new Date().toISOString(),
+          };
+          set({ sessionId, isTyping: false, messages: [welcomeMsg], activeQuestion: null });
+        } else {
+          set({ isTyping: false, status: 'idle' });
+        }
+      },
 
       startScan: async (entryType, bodyRegion?, condition?) => {
         set({ status: 'active', sessionType: entryType, messages: [], isTyping: true });

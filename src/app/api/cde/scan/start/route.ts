@@ -10,7 +10,7 @@ import { withOptionalAuth } from '@/server/auth/api-guard';
 export const dynamic = 'force-dynamic';
 
 const bodySchema = z.object({
-  entryType: z.enum(['location', 'condition', 'wellness']),
+  entryType: z.enum(['location', 'condition', 'wellness']).optional(),
   bodyRegion: z.string().optional(),
   condition: z.string().optional(),
   initialMessage: z.string().optional(),
@@ -24,7 +24,7 @@ const bodySchema = z.object({
 
 export const POST = withOptionalAuth(async (req: NextRequest, ctx) => {
   try {
-    const body = await req.json();
+    const body = await req.json().catch(() => ({}));
     const parsed = bodySchema.safeParse(body);
 
     if (!parsed.success) {
@@ -35,6 +35,23 @@ export const POST = withOptionalAuth(async (req: NextRequest, ctx) => {
     }
 
     const { entryType, bodyRegion, condition, prePopulatedFrom } = parsed.data;
+
+    // No entryType → PRE_TREE session: user must type first message before tree loads
+    if (!entryType) {
+      const result = await CDEEngine.startPreTreeSession({ userId: ctx?.userId });
+      return NextResponse.json({
+        success: true,
+        data: {
+          sessionId: result.sessionId,
+          status: 'pre_tree',
+          prompt: result.prompt,
+          disclaimers: {
+            standard:
+              'Kriya QuickScan is a self-reported wellness risk tool. It is not a medical diagnosis and should not replace professional medical advice.',
+          },
+        },
+      });
+    }
 
     const result = await CDEEngine.startSession({
       userId: ctx?.userId,
