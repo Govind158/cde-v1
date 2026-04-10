@@ -1,0 +1,580 @@
+{
+  "id": "DT_ELBOW_001",
+  "version": "3.0.0",
+  "moduleType": "location",
+  "entryCondition": { "bodyRegion": "elbow", "primarySymptom": "pain" },
+  "architecture": {
+    "type": "symptom_dominant",
+    "scoringWeights": { "layer0": 0, "layer1": 0.30, "layer2": 0.30, "layer3": 0.40 }
+  },
+  "crossReferences": [
+    { "tagId": "TENNIS_ELBOW", "target": "elbow_tennis", "targetQuestion": "sp_location" },
+    { "tagId": "CUBITAL_TUNNEL", "target": "elbow_ulnar_nerve", "targetQuestion": "sp_numbness" }
+  ],
+  "valueNormalization": {
+    "duration": {
+      "lt_6w": "acute_0_6_weeks",
+      "6w_3m": "subacute_6_12_weeks",
+      "gt_3m": "chronic_over_12_weeks"
+    }
+  },
+  "nodes": [
+    {
+      "id": "ELBOW_RF_001",
+      "type": "red_flag_screen",
+      "phase": "safety_first",
+      "on_all_clear": "ELBOW_PROFILE_001",
+      "questions": [
+        {
+          "id": "rf_elbow_deformity",
+          "text": "After an injury, is your elbow locked in a bent position, visibly deformed, or is there significant bruising and swelling — and are you unable to move it?",
+          "uiType": "radio",
+          "options": [
+            { "label": "Yes — locked, deformed, or cannot move after injury", "value": "yes", "score": 0 },
+            { "label": "No", "value": "no", "score": 0 }
+          ],
+          "allowMultiple": false,
+          "mapsTo": "redFlags.elbowDeformity",
+          "if_yes": {
+            "urgency": "urgent_24h",
+            "message": "Your symptoms suggest a possible elbow dislocation or fracture. Please attend A&E immediately.",
+            "action": "URGENT_REFERRAL_24H",
+            "halt_tree": true
+          },
+          "if_no": { "action": "continue" }
+        },
+        {
+          "id": "rf_elbow_cancer",
+          "text": "Have you had unexplained weight loss, a history of cancer, or constant elbow pain that is worst at night and unrelated to activity?",
+          "uiType": "radio",
+          "options": [
+            { "label": "Yes — one or more of these", "value": "yes", "score": 0 },
+            { "label": "No", "value": "no", "score": 0 }
+          ],
+          "allowMultiple": false,
+          "mapsTo": "redFlags.elbowCancer",
+          "if_yes": {
+            "urgency": "urgent_1_week",
+            "message": "Your responses suggest further medical evaluation is needed. Please see your doctor within the next week.",
+            "action": "URGENT_REFERRAL_1_WEEK",
+            "halt_tree": true
+          },
+          "if_no": { "action": "continue" }
+        }
+      ]
+    },
+
+    {
+      "id": "ELBOW_PROFILE_001",
+      "type": "symptom_profiling",
+      "phase": "understanding",
+      "next": "ELBOW_AGGRAVATING_001",
+      "questions": [
+        {
+          "id": "sp_duration",
+          "text": "How long have you had this elbow pain?",
+          "uiType": "radio",
+          "options": [
+            { "label": "Less than 6 weeks", "value": "acute_0_6_weeks", "score": 1 },
+            { "label": "6 weeks to 3 months", "value": "subacute_6_12_weeks", "score": 2 },
+            { "label": "More than 3 months", "value": "chronic_over_12_weeks", "score": 3 }
+          ],
+          "allowMultiple": false,
+          "maxScore": 3,
+          "mapsTo": "duration"
+        },
+        {
+          "id": "sp_severity",
+          "text": "On a scale of 0 to 10, how would you rate your elbow pain right now?",
+          "uiType": "numeric_scale",
+          "inputType": "numeric_scale",
+          "range": [0, 10],
+          "options": [],
+          "allowMultiple": false,
+          "maxScore": 10,
+          "mapsTo": "severity"
+        },
+        {
+          "id": "sp_onset",
+          "text": "How did your elbow pain start?",
+          "uiType": "radio",
+          "options": [
+            { "label": "Gradually after repetitive activity (sport, work, DIY)", "value": "after_activity", "score": 1 },
+            { "label": "After a fall or direct impact", "value": "after_fall", "score": 2 },
+            { "label": "No specific cause — appeared gradually", "value": "gradual", "score": 0 },
+            { "label": "I'm not sure", "value": "unknown", "score": 0 }
+          ],
+          "allowMultiple": false,
+          "maxScore": 2,
+          "mapsTo": "onset"
+        },
+        {
+          "id": "sp_location",
+          "text": "Where is the main area of elbow pain?",
+          "uiType": "radio",
+          "options": [
+            { "label": "Outer elbow (lateral side — near the 'bump')", "value": "outer", "score": 0 },
+            { "label": "Inner elbow (medial side — near the 'funny bone')", "value": "inner", "score": 0 },
+            { "label": "Back of the elbow (the point)", "value": "back", "score": 0 },
+            { "label": "Front of the elbow (elbow crease)", "value": "front", "score": 0 }
+          ],
+          "allowMultiple": false,
+          "maxScore": 0,
+          "mapsTo": "elbowLocation"
+        },
+        {
+          "id": "sp_gripping",
+          "text": "Does gripping objects (e.g. a cup, door handle, tools) increase your elbow pain?",
+          "uiType": "radio",
+          "options": [
+            { "label": "No — gripping is fine", "value": "no", "score": 0 },
+            { "label": "Mild discomfort when gripping", "value": "mild", "score": 1 },
+            { "label": "Significant pain — I avoid gripping or carry things differently", "value": "significant", "score": 2 }
+          ],
+          "allowMultiple": false,
+          "maxScore": 2,
+          "mapsTo": "grippingPain"
+        },
+        {
+          "id": "sp_numbness",
+          "text": "Do you have any numbness, tingling, or electric sensations running into your hand or fingers?",
+          "uiType": "radio",
+          "options": [
+            { "label": "No — no hand or finger numbness", "value": "none", "score": 0 },
+            { "label": "Yes — ring finger and little finger are affected", "value": "ring_little", "score": 2 },
+            { "label": "Yes — thumb, index, and middle finger are affected", "value": "thumb_index_middle", "score": 2 },
+            { "label": "Yes — back of the hand and wrist", "value": "back_hand", "score": 1 }
+          ],
+          "allowMultiple": false,
+          "maxScore": 2,
+          "mapsTo": "handNumbness",
+          "branching": {
+            "ring_little": "ELBOW_NERVE_001",
+            "thumb_index_middle": "ELBOW_NERVE_001",
+            "back_hand": "ELBOW_NERVE_001"
+          }
+        },
+        {
+          "id": "sp_locking",
+          "text": "Does your elbow ever get stuck or lock — unable to fully straighten or bend?",
+          "uiType": "radio",
+          "options": [
+            { "label": "No — moves freely", "value": "no", "score": 0 },
+            { "label": "Occasionally catches or gets briefly stuck", "value": "occasionally", "score": 1 },
+            { "label": "Frequently locks — significant limitation", "value": "frequently", "score": 2 }
+          ],
+          "allowMultiple": false,
+          "maxScore": 2,
+          "mapsTo": "elbowLocking"
+        }
+      ]
+    },
+
+    {
+      "id": "ELBOW_NERVE_001",
+      "type": "differential_assessment",
+      "phase": "investigation",
+      "next": "ELBOW_AGGRAVATING_001",
+      "questions": [
+        {
+          "id": "nerve_distribution",
+          "text": "Which fingers or areas of your hand are affected by numbness or tingling?",
+          "uiType": "radio",
+          "options": [
+            { "label": "Ring finger and little finger (inner side of hand)", "value": "ring_little", "score": 2 },
+            { "label": "Thumb, index finger, and middle finger", "value": "thumb_index_middle", "score": 2 },
+            { "label": "Back of the hand and wrist area", "value": "back_hand", "score": 1 }
+          ],
+          "allowMultiple": false,
+          "maxScore": 2,
+          "mapsTo": "nerveDistribution",
+          "clinicalSignificance": {
+            "ring_little": "ulnar_nerve_likely_cubital_tunnel",
+            "thumb_index_middle": "median_nerve_pronator_teres_or_CTS_at_wrist",
+            "back_hand": "radial_nerve_radial_tunnel"
+          }
+        },
+        {
+          "id": "nerve_elbow_flex",
+          "text": "Does holding your elbow bent (like holding a phone to your ear) for 1 minute make your numbness or tingling worse?",
+          "uiType": "radio",
+          "options": [
+            { "label": "Yes — holding the elbow bent makes it worse", "value": "yes", "score": 2 },
+            { "label": "No — no difference", "value": "no", "score": 0 }
+          ],
+          "allowMultiple": false,
+          "maxScore": 2,
+          "mapsTo": "elbowFlexionTest",
+          "clinicalSignificance": {
+            "yes": "cubital_tunnel_elbow_flexion_test_positive"
+          }
+        },
+        {
+          "id": "nerve_night",
+          "text": "Do you wake at night with numbness or tingling in your hand or fingers?",
+          "uiType": "radio",
+          "options": [
+            { "label": "Yes — regularly woken by hand numbness", "value": "yes", "score": 1 },
+            { "label": "No", "value": "no", "score": 0 }
+          ],
+          "allowMultiple": false,
+          "maxScore": 1,
+          "mapsTo": "nightNumbness",
+          "clinicalSignificance": {
+            "yes": "night_symptoms_suggest_CTS_at_wrist_rather_than_elbow"
+          }
+        }
+      ]
+    },
+
+    {
+      "id": "ELBOW_AGGRAVATING_001",
+      "type": "symptom_profiling",
+      "phase": "understanding",
+      "next": "ELBOW_FUNCTIONAL_001",
+      "questions": [
+        {
+          "id": "sp_aggravating",
+          "text": "What makes your elbow pain worse? Select all that apply.",
+          "uiType": "multi_select",
+          "options": [
+            { "label": "Gripping or squeezing", "value": "gripping", "score": 1 },
+            { "label": "Lifting objects (especially with palm down)", "value": "lifting", "score": 1 },
+            { "label": "Twisting movements (e.g. opening a jar, turning a screwdriver)", "value": "twisting", "score": 1 },
+            { "label": "Fully straightening the elbow", "value": "extension", "score": 1 },
+            { "label": "Computer use or typing", "value": "typing", "score": 1 },
+            { "label": "Sport or throwing", "value": "sport", "score": 1 }
+          ],
+          "allowMultiple": true,
+          "maxScore": 4,
+          "scoreCap": 3,
+          "mapsTo": "aggravatingFactors"
+        },
+        {
+          "id": "sp_easing",
+          "text": "What helps ease your elbow pain? Select all that apply.",
+          "uiType": "multi_select",
+          "options": [
+            { "label": "Rest", "value": "rest", "score": 0 },
+            { "label": "Ice", "value": "ice", "score": 0 },
+            { "label": "Heat", "value": "heat", "score": 0 },
+            { "label": "Elbow support or strap", "value": "elbow_strap", "score": 0 },
+            { "label": "Medication", "value": "medication", "score": 0 },
+            { "label": "Nothing really helps", "value": "nothing", "score": 1 }
+          ],
+          "allowMultiple": true,
+          "maxScore": 1,
+          "mapsTo": "easingFactors"
+        }
+      ]
+    },
+
+    {
+      "id": "ELBOW_FUNCTIONAL_001",
+      "type": "functional_assessment",
+      "phase": "impact_measurement",
+      "next": "ELBOW_HYPOTHESIS_001",
+      "scoring": {
+        "method": "sum",
+        "mapsTo": "functionalScore",
+        "interpretation": {
+          "0-2": "minimal_functional_impact",
+          "3-5": "moderate_functional_impact",
+          "6-9": "severe_functional_impact"
+        },
+        "interpretationMapsTo": "functionalImpact"
+      },
+      "questions": [
+        {
+          "id": "fn_sleep",
+          "text": "How much does your elbow pain affect your sleep?",
+          "uiType": "radio",
+          "options": [
+            { "label": "Not at all", "value": "0", "score": 0 },
+            { "label": "Occasionally disturbs my sleep", "value": "1", "score": 1 },
+            { "label": "Regularly disturbs my sleep", "value": "2", "score": 2 },
+            { "label": "Severely impacts my sleep most nights", "value": "3", "score": 3 }
+          ],
+          "allowMultiple": false,
+          "maxScore": 3,
+          "mapsTo": "functionalImpact.sleep"
+        },
+        {
+          "id": "fn_work",
+          "text": "How much does your elbow pain affect your ability to work or do daily tasks?",
+          "uiType": "radio",
+          "options": [
+            { "label": "Not at all", "value": "0", "score": 0 },
+            { "label": "I modify some tasks but manage", "value": "1", "score": 1 },
+            { "label": "I avoid several tasks because of the pain", "value": "2", "score": 2 },
+            { "label": "I struggle with most daily tasks", "value": "3", "score": 3 }
+          ],
+          "allowMultiple": false,
+          "maxScore": 3,
+          "mapsTo": "functionalImpact.work"
+        },
+        {
+          "id": "fn_exercise",
+          "text": "How has your elbow pain affected your exercise or sport?",
+          "uiType": "radio",
+          "options": [
+            { "label": "No change", "value": "0", "score": 0 },
+            { "label": "I have reduced some activities", "value": "1", "score": 1 },
+            { "label": "I have significantly reduced activity", "value": "2", "score": 2 },
+            { "label": "I have stopped exercising entirely", "value": "3", "score": 3 }
+          ],
+          "allowMultiple": false,
+          "maxScore": 3,
+          "mapsTo": "functionalImpact.exercise"
+        }
+      ]
+    },
+
+    {
+      "id": "ELBOW_HYPOTHESIS_001",
+      "type": "hypothesis_generation",
+      "phase": "clinical_reasoning",
+      "next": "ELBOW_ASSESS_REC_001",
+      "rules": [
+        {
+          "id": "hyp_elbow_tennis",
+          "displayName": "Lateral Epicondylalgia (Tennis Elbow)",
+          "criteria": {
+            "ALL": [
+              { "field": "elbowLocation", "equals": "outer" },
+              { "field": "grippingPain", "containsAny": ["mild", "significant"] }
+            ],
+            "NONE": [
+              { "field": "handNumbness", "containsAny": ["ring_little", "thumb_index_middle"] }
+            ]
+          },
+          "confidence": "high",
+          "recommendedGames": ["NN1", "FA1"],
+          "contraindicatedGames": []
+        },
+        {
+          "id": "hyp_elbow_golfers",
+          "displayName": "Medial Epicondylalgia (Golfer's Elbow)",
+          "criteria": {
+            "ALL": [
+              { "field": "elbowLocation", "equals": "inner" },
+              { "field": "grippingPain", "containsAny": ["mild", "significant"] }
+            ]
+          },
+          "confidence": "high",
+          "recommendedGames": ["NN1", "FA1"],
+          "contraindicatedGames": []
+        },
+        {
+          "id": "hyp_elbow_ulnar",
+          "displayName": "Cubital Tunnel Syndrome (Ulnar Nerve)",
+          "criteria": {
+            "ALL": [
+              { "field": "nerveDistribution", "equals": "ring_little" },
+              { "field": "elbowFlexionTest", "equals": "yes" }
+            ]
+          },
+          "confidence": "high",
+          "recommendedGames": ["NN1", "NN2", "NN5"],
+          "contraindicatedGames": []
+        },
+        {
+          "id": "hyp_elbow_pronator",
+          "displayName": "Pronator Teres Syndrome",
+          "criteria": {
+            "ALL": [
+              { "field": "nerveDistribution", "equals": "thumb_index_middle" },
+              { "field": "nightNumbness", "equals": "no" }
+            ]
+          },
+          "confidence": "moderate",
+          "recommendedGames": ["NN1", "NN2"],
+          "contraindicatedGames": []
+        },
+        {
+          "id": "hyp_elbow_radial_tunnel",
+          "displayName": "Radial Tunnel Syndrome",
+          "criteria": {
+            "ALL": [
+              { "field": "elbowLocation", "equals": "outer" },
+              { "field": "nerveDistribution", "equals": "back_hand" },
+              { "field": "grippingPain", "equals": "significant" }
+            ]
+          },
+          "confidence": "moderate",
+          "recommendedGames": ["NN1", "NN2"],
+          "contraindicatedGames": []
+        },
+        {
+          "id": "hyp_elbow_bursitis",
+          "displayName": "Olecranon Bursitis",
+          "criteria": {
+            "ALL": [
+              { "field": "elbowLocation", "equals": "back" },
+              { "field": "elbowLocking", "equals": "no" }
+            ]
+          },
+          "confidence": "moderate",
+          "recommendedGames": ["NN1"],
+          "contraindicatedGames": []
+        },
+        {
+          "id": "hyp_elbow_ucl",
+          "displayName": "UCL Sprain / Medial Ligament Injury",
+          "criteria": {
+            "ALL": [
+              { "field": "elbowLocation", "equals": "inner" },
+              { "field": "onset", "equals": "after_activity" }
+            ],
+            "NONE": [
+              { "field": "handNumbness", "containsAny": ["ring_little", "thumb_index_middle"] }
+            ]
+          },
+          "confidence": "moderate",
+          "recommendedGames": ["NN1", "FA1"],
+          "contraindicatedGames": []
+        },
+        {
+          "id": "hyp_elbow_rcl",
+          "displayName": "RCL Sprain / Lateral Ligament Injury",
+          "criteria": {
+            "ALL": [
+              { "field": "elbowLocation", "equals": "outer" },
+              { "field": "onset", "equals": "after_fall" }
+            ]
+          },
+          "confidence": "low",
+          "recommendedGames": ["NN1", "FA1"],
+          "contraindicatedGames": []
+        },
+        {
+          "id": "hyp_elbow_acute_lig",
+          "displayName": "Acute Ligament / Soft Tissue Injury",
+          "criteria": {
+            "ALL": [
+              { "field": "onset", "equals": "after_fall" },
+              { "field": "duration", "equals": "acute_0_6_weeks" }
+            ]
+          },
+          "confidence": "moderate",
+          "recommendedGames": ["NN1"],
+          "contraindicatedGames": []
+        },
+        {
+          "id": "hyp_elbow_chronic_lig",
+          "displayName": "Chronic Ligament Laxity",
+          "criteria": {
+            "ALL": [
+              { "field": "onset", "equals": "after_activity" },
+              { "field": "duration", "equals": "chronic_over_12_weeks" },
+              { "field": "elbowLocking", "containsAny": ["occasionally", "frequently"] }
+            ]
+          },
+          "confidence": "moderate",
+          "recommendedGames": ["NN1", "FA1", "BB1"],
+          "contraindicatedGames": []
+        },
+        {
+          "id": "hyp_elbow_soft_tissue",
+          "displayName": "Elbow Soft Tissue Injury",
+          "criteria": {
+            "ALL": [
+              { "field": "onset", "containsAny": ["after_activity", "after_fall"] },
+              { "field": "duration", "equals": "acute_0_6_weeks" }
+            ],
+            "NONE": [
+              { "field": "handNumbness", "containsAny": ["ring_little", "thumb_index_middle", "back_hand"] },
+              { "field": "elbowLocking", "containsAny": ["occasionally", "frequently"] }
+            ]
+          },
+          "confidence": "moderate",
+          "recommendedGames": ["NN1", "FA1"],
+          "contraindicatedGames": []
+        },
+        {
+          "id": "hyp_elbow_impingement",
+          "displayName": "Posterior Elbow Impingement",
+          "criteria": {
+            "ALL": [
+              { "field": "elbowLocation", "equals": "back" },
+              { "field": "elbowLocking", "containsAny": ["occasionally", "frequently"] },
+              { "field": "aggravatingFactors", "contains": "extension" }
+            ]
+          },
+          "confidence": "moderate",
+          "recommendedGames": ["FA1", "NN1"],
+          "contraindicatedGames": []
+        }
+      ]
+    },
+
+    {
+      "id": "ELBOW_ASSESS_REC_001",
+      "type": "assessment_recommendation",
+      "phase": "testing",
+      "maxGamesPerSession": 3,
+      "next_after_games": "ELBOW_INTERPRET_001"
+    },
+
+    {
+      "id": "ELBOW_INTERPRET_001",
+      "type": "score_interpretation",
+      "phase": "analysis",
+      "next": "ELBOW_CARE_MATCH_001"
+    },
+
+    {
+      "id": "ELBOW_CARE_MATCH_001",
+      "type": "care_pathway_matching",
+      "phase": "recommendation",
+      "careMatchingRules": [
+        {
+          "ruleId": "care_elbow_self_manage",
+          "pathwayId": "cp_elbow_self_manage",
+          "matchCriteria": {
+            "ALL": [
+              { "field": "severity", "lessThan": 4 },
+              { "field": "functionalImpact", "equals": "minimal_functional_impact" },
+              { "field": "duration", "equals": "acute_0_6_weeks" }
+            ]
+          }
+        },
+        {
+          "ruleId": "care_elbow_guided",
+          "pathwayId": "cp_elbow_guided_rehab",
+          "matchCriteria": {
+            "ANY": [
+              { "field": "severity", "between": [4, 6] },
+              { "field": "functionalImpact", "equals": "moderate_functional_impact" }
+            ]
+          }
+        },
+        {
+          "ruleId": "care_elbow_intensive",
+          "pathwayId": "cp_elbow_intensive",
+          "matchCriteria": {
+            "ANY": [
+              { "field": "severity", "greaterThan": 6 },
+              { "field": "functionalImpact", "equals": "severe_functional_impact" },
+              { "field": "duration", "equals": "chronic_over_12_weeks" }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+
+  "layers": {
+    "layer0": { "name": "Red Flag Screen", "questions": [] },
+    "layer1": { "name": "Symptom Profile", "questions": [] },
+    "layer2": { "name": "Functional Impact", "questions": [] },
+    "layer3": { "name": "Risk Modifiers", "questions": [] }
+  },
+  "riskTierThresholds": { "low": [0, 4], "moderate": [5, 8], "high": [9, 100] },
+  "hypothesisRules": [],
+  "careMatchingRules": [],
+  "disclaimers": {
+    "standard": "Kriya QuickScan is a self-reported wellness risk tool. It is not a medical diagnosis.",
+    "moduleSpecific": "Suspected elbow fracture or dislocation requires immediate A&E assessment. Do not attempt to move a deformed elbow."
+  }
+}

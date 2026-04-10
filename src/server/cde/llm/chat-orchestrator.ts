@@ -100,6 +100,10 @@ export class ChatOrchestrator {
         factStore.set('intent', preIntent);
         try {
           cdePre = await CDEEngine.activateTree(sessionId, preBodyRegion, preIntent);
+          // activateTree saves _treeActive:true to DB; mirror it on the local factStore so
+          // the final db.update below (which persists conversationHistory) does NOT overwrite
+          // _treeActive back to false with stale factStore data.
+          factStore.set('_treeActive', true);
         } catch {
           // Tree activation failed — continue as chat
         }

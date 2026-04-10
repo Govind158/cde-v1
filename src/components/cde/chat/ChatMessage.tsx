@@ -23,12 +23,13 @@ function ScoreInterpretationCard({ output }: { output: CDEOutput }) {
   if (output.type !== 'score_interpretation') return null;
   const { interpretation } = output;
   const colorMap: Record<string, string> = {
-    below_10: 'text-red-400 border-red-500/30 bg-red-500/10',
-    '10_to_25': 'text-amber-400 border-amber-500/30 bg-amber-500/10',
-    '25_to_75': 'text-blue-400 border-blue-500/30 bg-blue-500/10',
-    above_75: 'text-green-400 border-green-500/30 bg-green-500/10',
+    poor: 'text-red-400 border-red-500/30 bg-red-500/10',
+    below_average: 'text-amber-400 border-amber-500/30 bg-amber-500/10',
+    fair: 'text-blue-400 border-blue-500/30 bg-blue-500/10',
+    good: 'text-teal-400 border-teal-500/30 bg-teal-500/10',
+    excellent: 'text-green-400 border-green-500/30 bg-green-500/10',
   };
-  const colorClass = colorMap[interpretation.band] ?? colorMap['25_to_75'];
+  const colorClass = colorMap[interpretation.band] ?? colorMap['fair'];
 
   return (
     <div className={`mt-3 rounded-xl border p-3 ${colorClass} animate-scale-in`}>

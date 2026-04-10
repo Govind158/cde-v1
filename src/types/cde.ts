@@ -67,8 +67,8 @@ export const RISK_TIER_ACTIONS: Record<RiskLevel, RiskTierConfig> = {
 export interface GameScoreEntry {
   rawScore: number;
   percentile: number;
-  /** Normative band placement relative to age/sex peers */
-  band: 'below_10' | '10_to_25' | '25_to_75' | 'above_75';
+  /** Normative band placement relative to age/sex peers (spec 5-band system) */
+  band: 'poor' | 'below_average' | 'fair' | 'good' | 'excellent';
   interpretation: string;
 }
 
@@ -240,7 +240,7 @@ export interface CDEScoreInterpretationOutput {
     gameId: string;
     rawScore: number;
     percentile: number;
-    band: 'below_10' | '10_to_25' | '25_to_75' | 'above_75';
+    band: 'poor' | 'below_average' | 'fair' | 'good' | 'excellent';
     clinicalRelevance: string;
     trend?: 'improved' | 'declined' | 'stable';
     patientSummary: string;
@@ -618,7 +618,8 @@ export interface NormativeDataEntry {
 // ─────────────────────────────────────────────
 // 19. Score Interpretation Types (Phase 2 Step 2.2)
 // ─────────────────────────────────────────────
-export type PercentileBand = 'below_10th' | '10th_to_25th' | '25th_to_75th' | 'above_75th';
+/** 5-band percentile system per spec Tree 6 */
+export type PercentileBand = 'poor' | 'below_average' | 'fair' | 'good' | 'excellent';
 
 export interface ScoreTrend {
   direction: 'improved' | 'declined' | 'stable';

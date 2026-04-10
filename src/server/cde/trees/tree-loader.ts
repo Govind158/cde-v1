@@ -48,11 +48,38 @@ export async function loadTree(treeId: string): Promise<DecisionTree> {
     DT_LUMBAR_SPINE: 'low-back-pain',
     DT_LOWER_BACK: 'low-back-pain',
     DT_LOWER_BACK_PAIN: 'low-back-pain',
-    // Future trees:
-    // DT_NECK_PAIN: 'neck-pain',
-    // DT_SHOULDER: 'shoulder-pain',
-    // DT_KNEE: 'knee-pain',
-    // DT_WELLNESS: 'general-wellness',
+    DT_BACK: 'low-back-pain',
+    // Neck / Cervical
+    DT_NECK_001: 'neck-pain',
+    DT_NECK_PAIN: 'neck-pain',
+    DT_CERVICAL_SPINE: 'neck-pain',
+    DT_CERVICAL: 'neck-pain',
+    DT_NECK: 'neck-pain',
+    // Shoulder
+    DT_SHOULDER_001: 'shoulder-pain',
+    DT_SHOULDER_PAIN: 'shoulder-pain',
+    DT_SHOULDER: 'shoulder-pain',
+    // Knee
+    DT_KNEE_001: 'knee-pain',
+    DT_KNEE_PAIN: 'knee-pain',
+    DT_KNEE: 'knee-pain',
+    // Hip
+    DT_HIP_001: 'hip-pain',
+    DT_HIP_PAIN: 'hip-pain',
+    DT_HIP: 'hip-pain',
+    // Ankle
+    DT_ANKLE_001: 'ankle-pain',
+    DT_ANKLE_PAIN: 'ankle-pain',
+    DT_ANKLE: 'ankle-pain',
+    // Elbow
+    DT_ELBOW_001: 'elbow-pain',
+    DT_ELBOW_PAIN: 'elbow-pain',
+    DT_ELBOW: 'elbow-pain',
+    // Wrist / Hand
+    DT_WRIST_001: 'wrist-pain',
+    DT_WRIST_PAIN: 'wrist-pain',
+    DT_WRIST_HAND: 'wrist-pain',
+    DT_WRIST: 'wrist-pain',
   };
 
   const fileName = fileMap[treeId];

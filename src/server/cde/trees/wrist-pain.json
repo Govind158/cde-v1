@@ -1,0 +1,607 @@
+{
+  "id": "DT_WRIST_001",
+  "version": "3.0.0",
+  "moduleType": "location",
+  "entryCondition": { "bodyRegion": "wrist_hand", "primarySymptom": "pain" },
+  "architecture": {
+    "type": "symptom_dominant",
+    "scoringWeights": { "layer0": 0, "layer1": 0.30, "layer2": 0.30, "layer3": 0.40 }
+  },
+  "crossReferences": [
+    { "tagId": "CARPAL_TUNNEL", "target": "wrist_carpal_tunnel", "targetQuestion": "sp_night" },
+    { "tagId": "DEQUERVAIN", "target": "wrist_dequervain", "targetQuestion": "sp_location" }
+  ],
+  "valueNormalization": {
+    "duration": {
+      "lt_6w": "acute_0_6_weeks",
+      "6w_3m": "subacute_6_12_weeks",
+      "gt_3m": "chronic_over_12_weeks"
+    }
+  },
+  "nodes": [
+    {
+      "id": "WRIST_RF_001",
+      "type": "red_flag_screen",
+      "phase": "safety_first",
+      "on_all_clear": "WRIST_PROFILE_001",
+      "questions": [
+        {
+          "id": "rf_snuffbox",
+          "text": "Did you fall onto an outstretched hand and now have pain specifically in the area between your thumb and wrist (the 'anatomical snuffbox' depression)?",
+          "uiType": "radio",
+          "options": [
+            { "label": "Yes — I fell on my hand and have pain in that exact area", "value": "yes", "score": 0 },
+            { "label": "No", "value": "no", "score": 0 }
+          ],
+          "allowMultiple": false,
+          "mapsTo": "redFlags.snuffboxTenderness",
+          "sourceInstrument": "Scaphoid Fracture Screening",
+          "if_yes": {
+            "urgency": "urgent_24h",
+            "message": "Pain in the anatomical snuffbox after a fall may indicate a scaphoid fracture. This requires an X-ray urgently — please attend A&E or an urgent care clinic within 24 hours.",
+            "action": "URGENT_REFERRAL_24H",
+            "halt_tree": true
+          },
+          "if_no": { "action": "continue" }
+        },
+        {
+          "id": "rf_kanavel",
+          "text": "Is one of your fingers red, swollen like a sausage, held in a slightly bent position, and is it extremely painful to try to straighten it?",
+          "uiType": "radio",
+          "options": [
+            { "label": "Yes — all of these describe my finger", "value": "yes", "score": 0 },
+            { "label": "No", "value": "no", "score": 0 }
+          ],
+          "allowMultiple": false,
+          "mapsTo": "redFlags.kanavelSigns",
+          "sourceInstrument": "Kanavel Signs — Flexor Sheath Infection",
+          "if_yes": {
+            "urgency": "emergency",
+            "message": "Your symptoms match Kanavel's signs — a possible flexor sheath infection which is a surgical emergency. Please go to A&E immediately.",
+            "action": "EMERGENCY_REFERRAL",
+            "halt_tree": true
+          },
+          "if_no": { "action": "continue" }
+        },
+        {
+          "id": "rf_wrist_cancer",
+          "text": "Have you had unexplained weight loss, a history of cancer, or constant wrist pain that is worst at night and unrelated to movement?",
+          "uiType": "radio",
+          "options": [
+            { "label": "Yes — one or more of these", "value": "yes", "score": 0 },
+            { "label": "No", "value": "no", "score": 0 }
+          ],
+          "allowMultiple": false,
+          "mapsTo": "redFlags.wristCancer",
+          "if_yes": {
+            "urgency": "urgent_1_week",
+            "message": "Your responses suggest further medical evaluation is needed. Please see your doctor within the next week.",
+            "action": "URGENT_REFERRAL_1_WEEK",
+            "halt_tree": true
+          },
+          "if_no": { "action": "continue" }
+        }
+      ]
+    },
+
+    {
+      "id": "WRIST_PROFILE_001",
+      "type": "symptom_profiling",
+      "phase": "understanding",
+      "next": "WRIST_AGGRAVATING_001",
+      "questions": [
+        {
+          "id": "sp_duration",
+          "text": "How long have you had this wrist or hand pain?",
+          "uiType": "radio",
+          "options": [
+            { "label": "Less than 6 weeks", "value": "acute_0_6_weeks", "score": 1 },
+            { "label": "6 weeks to 3 months", "value": "subacute_6_12_weeks", "score": 2 },
+            { "label": "More than 3 months", "value": "chronic_over_12_weeks", "score": 3 }
+          ],
+          "allowMultiple": false,
+          "maxScore": 3,
+          "mapsTo": "duration"
+        },
+        {
+          "id": "sp_severity",
+          "text": "On a scale of 0 to 10, how would you rate your wrist or hand pain right now?",
+          "uiType": "numeric_scale",
+          "inputType": "numeric_scale",
+          "range": [0, 10],
+          "options": [],
+          "allowMultiple": false,
+          "maxScore": 10,
+          "mapsTo": "severity"
+        },
+        {
+          "id": "sp_onset",
+          "text": "How did your wrist or hand problem start?",
+          "uiType": "radio",
+          "options": [
+            { "label": "After a fall onto my hand", "value": "after_fall", "score": 2 },
+            { "label": "Gradually after repetitive activity (typing, sport, craft)", "value": "after_repetitive", "score": 1 },
+            { "label": "No specific cause — came on gradually", "value": "gradual", "score": 0 },
+            { "label": "I'm not sure", "value": "unknown", "score": 0 }
+          ],
+          "allowMultiple": false,
+          "maxScore": 2,
+          "mapsTo": "onset"
+        },
+        {
+          "id": "sp_location",
+          "text": "Where is the main area of pain in your wrist or hand?",
+          "uiType": "radio",
+          "options": [
+            { "label": "Thumb side of the wrist", "value": "thumb_side", "score": 0 },
+            { "label": "Palm side of the wrist / carpal tunnel area", "value": "palm", "score": 0 },
+            { "label": "Little finger side of the wrist", "value": "little_finger_side", "score": 0 },
+            { "label": "Back of the wrist (top)", "value": "back_of_wrist", "score": 0 },
+            { "label": "Base of the thumb (thumb-wrist joint)", "value": "thumb_base", "score": 0 }
+          ],
+          "allowMultiple": false,
+          "maxScore": 0,
+          "mapsTo": "wristLocation"
+        },
+        {
+          "id": "sp_night",
+          "text": "Do you wake at night with numbness, tingling, or a 'dead' feeling in your hand or fingers?",
+          "uiType": "radio",
+          "options": [
+            { "label": "No — no night symptoms", "value": "no", "score": 0 },
+            { "label": "Occasionally — a few times per week", "value": "occasionally", "score": 2 },
+            { "label": "Most nights — regularly woken by hand symptoms", "value": "most_nights", "score": 3 }
+          ],
+          "allowMultiple": false,
+          "maxScore": 3,
+          "mapsTo": "nightNumbness",
+          "branching": {
+            "occasionally": "WRIST_NERVE_001",
+            "most_nights": "WRIST_NERVE_001"
+          }
+        },
+        {
+          "id": "sp_grip",
+          "text": "Have you noticed any weakness in your grip — difficulty opening jars, turning keys, or holding objects?",
+          "uiType": "radio",
+          "options": [
+            { "label": "No — grip is normal", "value": "no", "score": 0 },
+            { "label": "Mildly weak — slightly weaker than usual", "value": "mild", "score": 1 },
+            { "label": "Significantly weak — I frequently drop things", "value": "dropping", "score": 2 }
+          ],
+          "allowMultiple": false,
+          "maxScore": 2,
+          "mapsTo": "gripWeakness"
+        },
+        {
+          "id": "sp_finger",
+          "text": "Does any finger get stuck or lock in a bent position — requiring you to manually straighten it?",
+          "uiType": "radio",
+          "options": [
+            { "label": "No — fingers move freely", "value": "no", "score": 0 },
+            { "label": "Yes — one specific finger", "value": "one_finger", "score": 2 },
+            { "label": "Yes — multiple fingers", "value": "multiple_fingers", "score": 2 }
+          ],
+          "allowMultiple": false,
+          "maxScore": 2,
+          "mapsTo": "fingerLocking"
+        },
+        {
+          "id": "sp_swelling",
+          "text": "Is there any visible swelling or lumps on your wrist or hand?",
+          "uiType": "radio",
+          "options": [
+            { "label": "No visible swelling", "value": "no", "score": 0 },
+            { "label": "A small, smooth lump or bump", "value": "small_lump", "score": 1 },
+            { "label": "Diffuse swelling across the wrist or hand", "value": "diffuse", "score": 1 }
+          ],
+          "allowMultiple": false,
+          "maxScore": 1,
+          "mapsTo": "wristSwelling"
+        }
+      ]
+    },
+
+    {
+      "id": "WRIST_NERVE_001",
+      "type": "differential_assessment",
+      "phase": "investigation",
+      "next": "WRIST_AGGRAVATING_001",
+      "questions": [
+        {
+          "id": "nerve_phalen",
+          "text": "Hold both wrists bent downward (palms together, wrists fully flexed) for 60 seconds. Does this reproduce your numbness or tingling?",
+          "uiType": "radio",
+          "options": [
+            { "label": "Yes — it reproduces the numbness within 60 seconds", "value": "yes", "score": 2 },
+            { "label": "No — no symptoms", "value": "no", "score": 0 }
+          ],
+          "allowMultiple": false,
+          "maxScore": 2,
+          "mapsTo": "phalen",
+          "sourceInstrument": "Phalen's Test (self-reported proxy)"
+        },
+        {
+          "id": "nerve_area",
+          "text": "Which part of your hand is most affected by the numbness or tingling?",
+          "uiType": "radio",
+          "options": [
+            { "label": "Thumb, index, and middle finger (thumb-side)", "value": "thumb_index", "score": 0 },
+            { "label": "All fingers and palm", "value": "all_fingers", "score": 0 },
+            { "label": "Ring and little finger (little-finger side)", "value": "little_ring", "score": 0 }
+          ],
+          "allowMultiple": false,
+          "maxScore": 0,
+          "mapsTo": "numbnessArea",
+          "clinicalSignificance": {
+            "thumb_index": "median_nerve_distribution_CTS",
+            "all_fingers": "median_nerve_distribution_CTS",
+            "little_ring": "ulnar_nerve_distribution_cubital_or_guyon"
+          }
+        }
+      ]
+    },
+
+    {
+      "id": "WRIST_AGGRAVATING_001",
+      "type": "symptom_profiling",
+      "phase": "understanding",
+      "next": "WRIST_FUNCTIONAL_001",
+      "questions": [
+        {
+          "id": "sp_aggravating",
+          "text": "What makes your wrist or hand pain worse? Select all that apply.",
+          "uiType": "multi_select",
+          "options": [
+            { "label": "Gripping objects", "value": "gripping", "score": 1 },
+            { "label": "Thumb movement (pinching, texting)", "value": "thumb_movement", "score": 1 },
+            { "label": "Rotating or twisting (turning a key, opening jars)", "value": "rotation", "score": 1 },
+            { "label": "Typing or keyboard use", "value": "typing", "score": 1 },
+            { "label": "Pinching small objects", "value": "pinching", "score": 1 },
+            { "label": "Bending the wrist up or down", "value": "wrist_flexion_extension", "score": 1 }
+          ],
+          "allowMultiple": true,
+          "maxScore": 4,
+          "scoreCap": 3,
+          "mapsTo": "aggravatingFactors"
+        },
+        {
+          "id": "sp_easing",
+          "text": "What helps ease your wrist or hand pain? Select all that apply.",
+          "uiType": "multi_select",
+          "options": [
+            { "label": "Rest", "value": "rest", "score": 0 },
+            { "label": "Wrist splint or brace (especially at night)", "value": "splint", "score": 0 },
+            { "label": "Ice", "value": "ice", "score": 0 },
+            { "label": "Heat", "value": "heat", "score": 0 },
+            { "label": "Medication", "value": "medication", "score": 0 },
+            { "label": "Nothing really helps", "value": "nothing", "score": 1 }
+          ],
+          "allowMultiple": true,
+          "maxScore": 1,
+          "mapsTo": "easingFactors"
+        }
+      ]
+    },
+
+    {
+      "id": "WRIST_FUNCTIONAL_001",
+      "type": "functional_assessment",
+      "phase": "impact_measurement",
+      "next": "WRIST_HYPOTHESIS_001",
+      "scoring": {
+        "method": "sum",
+        "mapsTo": "functionalScore",
+        "interpretation": {
+          "0-2": "minimal_functional_impact",
+          "3-5": "moderate_functional_impact",
+          "6-9": "severe_functional_impact"
+        },
+        "interpretationMapsTo": "functionalImpact"
+      },
+      "questions": [
+        {
+          "id": "fn_sleep",
+          "text": "How much does your wrist or hand pain affect your sleep?",
+          "uiType": "radio",
+          "options": [
+            { "label": "Not at all", "value": "0", "score": 0 },
+            { "label": "Occasionally disturbs my sleep", "value": "1", "score": 1 },
+            { "label": "Regularly disturbs my sleep", "value": "2", "score": 2 },
+            { "label": "Severely impacts my sleep most nights", "value": "3", "score": 3 }
+          ],
+          "allowMultiple": false,
+          "maxScore": 3,
+          "mapsTo": "functionalImpact.sleep",
+          "sourceInstrument": "DASH / Boston CTS Questionnaire"
+        },
+        {
+          "id": "fn_work",
+          "text": "How much does your wrist or hand pain affect your ability to work or perform daily tasks?",
+          "uiType": "radio",
+          "options": [
+            { "label": "Not at all", "value": "0", "score": 0 },
+            { "label": "I modify some tasks but manage", "value": "1", "score": 1 },
+            { "label": "I avoid several tasks because of the pain", "value": "2", "score": 2 },
+            { "label": "I struggle with most daily tasks", "value": "3", "score": 3 }
+          ],
+          "allowMultiple": false,
+          "maxScore": 3,
+          "mapsTo": "functionalImpact.work",
+          "sourceInstrument": "DASH"
+        },
+        {
+          "id": "fn_exercise",
+          "text": "How has your wrist or hand pain affected your exercise, sport, or hobbies?",
+          "uiType": "radio",
+          "options": [
+            { "label": "No change", "value": "0", "score": 0 },
+            { "label": "I have reduced some activities", "value": "1", "score": 1 },
+            { "label": "I have significantly reduced activity", "value": "2", "score": 2 },
+            { "label": "I have stopped exercising entirely", "value": "3", "score": 3 }
+          ],
+          "allowMultiple": false,
+          "maxScore": 3,
+          "mapsTo": "functionalImpact.exercise",
+          "sourceInstrument": "DASH"
+        }
+      ]
+    },
+
+    {
+      "id": "WRIST_HYPOTHESIS_001",
+      "type": "hypothesis_generation",
+      "phase": "clinical_reasoning",
+      "next": "WRIST_ASSESS_REC_001",
+      "rules": [
+        {
+          "id": "hyp_wrist_cts",
+          "displayName": "Carpal Tunnel Syndrome",
+          "criteria": {
+            "ALL": [
+              { "field": "nightNumbness", "containsAny": ["occasionally", "most_nights"] },
+              { "field": "wristLocation", "containsAny": ["thumb_side", "palm"] }
+            ]
+          },
+          "confidence": "high",
+          "recommendedGames": ["NN1", "NN2", "NN3", "NN5"],
+          "contraindicatedGames": []
+        },
+        {
+          "id": "hyp_wrist_dequervain",
+          "displayName": "De Quervain's Tenosynovitis",
+          "criteria": {
+            "ALL": [
+              { "field": "wristLocation", "equals": "thumb_side" },
+              { "field": "aggravatingFactors", "containsAny": ["gripping", "thumb_movement"] }
+            ]
+          },
+          "confidence": "high",
+          "recommendedGames": ["NN1", "FA1"],
+          "contraindicatedGames": []
+        },
+        {
+          "id": "hyp_wrist_tfcc",
+          "displayName": "TFCC Injury (Triangular Fibrocartilage Complex)",
+          "criteria": {
+            "ALL": [
+              { "field": "wristLocation", "equals": "little_finger_side" },
+              { "field": "aggravatingFactors", "containsAny": ["rotation", "gripping"] }
+            ]
+          },
+          "confidence": "moderate",
+          "recommendedGames": ["NN1"],
+          "contraindicatedGames": []
+        },
+        {
+          "id": "hyp_wrist_ganglion",
+          "displayName": "Ganglion Cyst",
+          "criteria": {
+            "ALL": [
+              { "field": "wristSwelling", "equals": "small_lump" },
+              { "field": "wristLocation", "containsAny": ["back_of_wrist", "palm"] }
+            ]
+          },
+          "confidence": "high",
+          "recommendedGames": ["NN1"],
+          "contraindicatedGames": []
+        },
+        {
+          "id": "hyp_wrist_trigger",
+          "displayName": "Trigger Finger",
+          "criteria": {
+            "ALL": [
+              { "field": "fingerLocking", "containsAny": ["one_finger", "multiple_fingers"] }
+            ]
+          },
+          "confidence": "high",
+          "recommendedGames": ["NN1", "NN2"],
+          "contraindicatedGames": []
+        },
+        {
+          "id": "hyp_wrist_soft_tissue",
+          "displayName": "Wrist Soft Tissue Injury",
+          "criteria": {
+            "ALL": [
+              { "field": "onset", "containsAny": ["after_fall", "after_repetitive"] },
+              { "field": "duration", "equals": "acute_0_6_weeks" }
+            ],
+            "NONE": [
+              { "field": "nightNumbness", "containsAny": ["occasionally", "most_nights"] },
+              { "field": "fingerLocking", "containsAny": ["one_finger", "multiple_fingers"] }
+            ]
+          },
+          "confidence": "moderate",
+          "recommendedGames": ["NN1", "FA1"],
+          "contraindicatedGames": []
+        },
+        {
+          "id": "hyp_wrist_acute_lig",
+          "displayName": "Acute Wrist Ligament Injury",
+          "criteria": {
+            "ALL": [
+              { "field": "onset", "equals": "after_fall" },
+              { "field": "duration", "equals": "acute_0_6_weeks" },
+              { "field": "gripWeakness", "containsAny": ["mild", "dropping"] }
+            ]
+          },
+          "confidence": "moderate",
+          "recommendedGames": ["NN1"],
+          "contraindicatedGames": []
+        },
+        {
+          "id": "hyp_wrist_chronic_lig",
+          "displayName": "Chronic Wrist Ligament Laxity",
+          "criteria": {
+            "ALL": [
+              { "field": "onset", "containsAny": ["after_fall", "unknown"] },
+              { "field": "duration", "equals": "chronic_over_12_weeks" },
+              { "field": "gripWeakness", "containsAny": ["mild", "dropping"] }
+            ]
+          },
+          "confidence": "moderate",
+          "recommendedGames": ["NN1", "FA1"],
+          "contraindicatedGames": []
+        },
+        {
+          "id": "hyp_wrist_tendinopathy",
+          "displayName": "Wrist Extensor / Flexor Tendinopathy",
+          "criteria": {
+            "ALL": [
+              { "field": "onset", "equals": "after_repetitive" },
+              { "field": "duration", "containsAny": ["subacute_6_12_weeks", "chronic_over_12_weeks"] }
+            ],
+            "NONE": [
+              { "field": "nightNumbness", "containsAny": ["occasionally", "most_nights"] }
+            ]
+          },
+          "confidence": "moderate",
+          "recommendedGames": ["NN1", "FA1"],
+          "contraindicatedGames": []
+        },
+        {
+          "id": "hyp_wrist_dupuytren",
+          "displayName": "Dupuytren's Contracture",
+          "criteria": {
+            "ALL": [
+              { "field": "fingerLocking", "containsAny": ["one_finger", "multiple_fingers"] },
+              { "field": "wristSwelling", "equals": "small_lump" },
+              { "field": "wristLocation", "equals": "palm" }
+            ]
+          },
+          "confidence": "moderate",
+          "recommendedGames": ["NN1"],
+          "contraindicatedGames": []
+        },
+        {
+          "id": "hyp_wrist_cmc_oa",
+          "displayName": "Thumb CMC / Basal Joint Osteoarthritis",
+          "criteria": {
+            "ALL": [
+              { "field": "wristLocation", "equals": "thumb_base" },
+              { "field": "aggravatingFactors", "containsAny": ["gripping", "pinching"] }
+            ]
+          },
+          "confidence": "moderate",
+          "recommendedGames": ["NN1", "NN2"],
+          "contraindicatedGames": []
+        },
+        {
+          "id": "hyp_wrist_arthritis",
+          "displayName": "Wrist / Hand Arthritis",
+          "criteria": {
+            "ALL": [
+              { "field": "duration", "equals": "chronic_over_12_weeks" },
+              { "field": "gripWeakness", "containsAny": ["mild", "dropping"] }
+            ],
+            "NONE": [
+              { "field": "nightNumbness", "containsAny": ["occasionally", "most_nights"] }
+            ]
+          },
+          "confidence": "moderate",
+          "recommendedGames": ["NN1", "FA1"],
+          "contraindicatedGames": []
+        }
+      ]
+    },
+
+    {
+      "id": "WRIST_ASSESS_REC_001",
+      "type": "assessment_recommendation",
+      "phase": "testing",
+      "maxGamesPerSession": 3,
+      "next_after_games": "WRIST_INTERPRET_001"
+    },
+
+    {
+      "id": "WRIST_INTERPRET_001",
+      "type": "score_interpretation",
+      "phase": "analysis",
+      "next": "WRIST_CARE_MATCH_001"
+    },
+
+    {
+      "id": "WRIST_CARE_MATCH_001",
+      "type": "care_pathway_matching",
+      "phase": "recommendation",
+      "careMatchingRules": [
+        {
+          "ruleId": "care_wrist_hand_therapy",
+          "pathwayId": "cp_hand_therapy",
+          "matchCriteria": {
+            "ANY": [
+              { "field": "nightNumbness", "containsAny": ["occasionally", "most_nights"] },
+              { "field": "fingerLocking", "containsAny": ["one_finger", "multiple_fingers"] }
+            ]
+          }
+        },
+        {
+          "ruleId": "care_wrist_self_manage",
+          "pathwayId": "cp_wrist_self_manage",
+          "matchCriteria": {
+            "ALL": [
+              { "field": "severity", "lessThan": 4 },
+              { "field": "functionalImpact", "equals": "minimal_functional_impact" },
+              { "field": "duration", "equals": "acute_0_6_weeks" }
+            ]
+          }
+        },
+        {
+          "ruleId": "care_wrist_guided",
+          "pathwayId": "cp_wrist_guided_rehab",
+          "matchCriteria": {
+            "ANY": [
+              { "field": "severity", "between": [4, 6] },
+              { "field": "functionalImpact", "equals": "moderate_functional_impact" }
+            ]
+          }
+        },
+        {
+          "ruleId": "care_wrist_intensive",
+          "pathwayId": "cp_wrist_intensive",
+          "matchCriteria": {
+            "ANY": [
+              { "field": "severity", "greaterThan": 6 },
+              { "field": "functionalImpact", "equals": "severe_functional_impact" },
+              { "field": "duration", "equals": "chronic_over_12_weeks" }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+
+  "layers": {
+    "layer0": { "name": "Red Flag Screen", "questions": [] },
+    "layer1": { "name": "Symptom Profile", "questions": [] },
+    "layer2": { "name": "Functional Impact", "questions": [] },
+    "layer3": { "name": "Risk Modifiers", "questions": [] }
+  },
+  "riskTierThresholds": { "low": [0, 4], "moderate": [5, 8], "high": [9, 100] },
+  "hypothesisRules": [],
+  "careMatchingRules": [],
+  "disclaimers": {
+    "standard": "Kriya QuickScan is a self-reported wellness risk tool. It is not a medical diagnosis.",
+    "moduleSpecific": "Suspected scaphoid fracture (snuffbox tenderness post-fall) or flexor sheath infection (Kanavel signs) require immediate A&E assessment."
+  }
+}

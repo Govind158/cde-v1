@@ -297,7 +297,7 @@ export const useScanStore = create<ScanState>()(
           const entry: GameScoreEntry = {
             rawScore,
             percentile: (res.data.interpretation as any).percentile ?? 50,
-            band: (res.data.interpretation as any).band ?? '25_to_75',
+            band: (res.data.interpretation as any).band ?? 'fair',
             interpretation: (res.data.interpretation as any).interpretation ?? '',
           };
 

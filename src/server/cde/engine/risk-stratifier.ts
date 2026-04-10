@@ -4,10 +4,10 @@
  * Computes the clinical risk level for a scan session using additive factor scoring.
  * This is a deterministic algorithm — no LLM involvement.
  *
- * Algorithm from clinical-decision-engine-guide.md Section 6.2:
+ * Spec (kriya-cde-complete-tree-system.md Tree 4):
  * 1. If any red flag is positive → return RED (bypasses scoring)
- * 2. Add up risk points from 6 factors (severity, duration, neuro, motor, functional, progressive)
- * 3. Map total score to tier: 8+ = ORANGE, 4-7 = YELLOW, 1-3 = GREEN, 0 = BLUE
+ * 2. Add up risk points from 6 universal factors + region-specific modifiers
+ * 3. Map total: ≥12 = RED, 9-11 = ORANGE, 5-8 = YELLOW, 3-4 = GREEN, 0-2 = BLUE
  */
 
 import type { RiskLevel } from '@/types/cde';
@@ -19,6 +19,7 @@ export interface RiskFactorBreakdown {
   motorDeficitPoints: number;
   functionalImpactPoints: number;
   progressiveWorseningPoints: number;
+  regionModifierPoints: number;
   totalScore: number;
   riskLevel: RiskLevel;
   redFlagOverride: boolean;
@@ -36,8 +37,9 @@ export function computeRiskLevel(factStore: Record<string, unknown>): RiskLevel 
  * Returns the risk level plus every contributing factor for transparency.
  */
 export function computeRiskBreakdown(factStore: Record<string, unknown>): RiskFactorBreakdown {
-  // ── Step A: RED check — any positive red flag bypasses scoring entirely ──
   const redFlags = (factStore.redFlags ?? {}) as Record<string, boolean | null>;
+
+  // ── Step A: RED check — any positive red flag bypasses scoring entirely ──
   const hasPositiveRedFlag = Object.values(redFlags).some((v) => v === true);
 
   if (hasPositiveRedFlag) {
@@ -48,6 +50,7 @@ export function computeRiskBreakdown(factStore: Record<string, unknown>): RiskFa
       motorDeficitPoints: 0,
       functionalImpactPoints: 0,
       progressiveWorseningPoints: 0,
+      regionModifierPoints: 0,
       totalScore: 0,
       riskLevel: 'RED',
       redFlagOverride: true,
@@ -56,18 +59,17 @@ export function computeRiskBreakdown(factStore: Record<string, unknown>): RiskFa
 
   // ── Step B: Additive factor scoring ──
 
-  // Factor 1 — Severity (NPRS 0-10)
+  // Factor 1 — Severity (NPRS 0-10): +1 (1-3), +2 (4-5), +3 (6-7), +4 (8-10)
   let severityPoints = 0;
   const severity = factStore.severity as number | null;
   if (severity !== null && severity !== undefined) {
     if (severity >= 8) severityPoints = 4;
     else if (severity >= 6) severityPoints = 3;
     else if (severity >= 4) severityPoints = 2;
-    else if (severity >= 2) severityPoints = 1;
-    // severity 0-1 = 0 points
+    else if (severity >= 1) severityPoints = 1;
   }
 
-  // Factor 2 — Duration
+  // Factor 2 — Duration: +0 acute, +1 subacute, +2 chronic
   let durationPoints = 0;
   const duration = factStore.duration as string | null;
   if (duration === 'chronic_over_12_weeks' || duration === 'gt_3m') {
@@ -75,67 +77,118 @@ export function computeRiskBreakdown(factStore: Record<string, unknown>): RiskFa
   } else if (duration === 'subacute_6_12_weeks' || duration === '6w_3m') {
     durationPoints = 1;
   }
-  // acute = 0 points
 
-  // Factor 3 — Neurological (radiation pattern)
+  // Factor 3 — Neurological (radiation / radicular pattern)
   let neurologicalPoints = 0;
   const radiation = factStore.radiation as string | null;
-  if (radiation === 'radicular_below_knee' || radiation === 'below_knee') {
+  if (radiation === 'radicular_below_knee' || radiation === 'below_knee' ||
+      radiation === 'arm_below_elbow') {
     neurologicalPoints = 2;
-  } else if (radiation === 'radicular_above_knee' || radiation === 'above_knee') {
+  } else if (radiation === 'radicular_above_knee' || radiation === 'above_knee' ||
+             radiation === 'arm_above_elbow') {
     neurologicalPoints = 1;
   }
 
-  // Factor 4 — Motor deficit
+  // Factor 4 — Motor / neurological deficit: +0 none, +2 sensory, +3 motor/both
   let motorDeficitPoints = 0;
   const neuroDeficit = factStore.neuroDeficit as string | null;
   const weakness = factStore.weakness as boolean | null;
   if (neuroDeficit === 'motor' || neuroDeficit === 'sensorimotor') {
     motorDeficitPoints = 3;
   } else if (neuroDeficit === 'sensory') {
-    motorDeficitPoints = 1;
+    motorDeficitPoints = 2;
   } else if (weakness === true) {
     motorDeficitPoints = 2;
   }
 
-  // Factor 5 — Functional impact
+  // Factor 5 — Functional impact (sleep+work+exercise sum 0-9)
   let functionalImpactPoints = 0;
   const rawFunctionalImpact = factStore.functionalImpact;
-  // functionalImpact may be:
-  //   - a string label ("moderate_functional_impact", "moderate", etc.)
-  //   - an object {sleep, work, exercise} if scoring hasn't run yet
   const functionalImpactLabel: string | null =
     typeof rawFunctionalImpact === 'string' ? rawFunctionalImpact : null;
   let functionalScore = factStore.functionalScore as number | null;
 
-  // If sub-fields are present and no score yet, compute on the fly
   if (functionalScore === null && typeof rawFunctionalImpact === 'object' && rawFunctionalImpact !== null) {
     const sub = rawFunctionalImpact as Record<string, unknown>;
-    const sum = (['sleep', 'work', 'exercise'] as const)
+    functionalScore = (['sleep', 'work', 'exercise'] as const)
       .map((k) => (typeof sub[k] === 'number' ? (sub[k] as number) : 0))
       .reduce((a, b) => a + b, 0);
-    functionalScore = sum;
   }
 
   if (
-    functionalImpactLabel === 'severe_functional_impact' ||
-    functionalImpactLabel === 'severe' ||
+    functionalImpactLabel === 'severe_functional_impact' || functionalImpactLabel === 'severe' ||
     (functionalScore !== null && functionalScore >= 6)
   ) {
     functionalImpactPoints = 3;
   } else if (
-    functionalImpactLabel === 'moderate_functional_impact' ||
-    functionalImpactLabel === 'moderate' ||
+    functionalImpactLabel === 'moderate_functional_impact' || functionalImpactLabel === 'moderate' ||
     (functionalScore !== null && functionalScore >= 3)
   ) {
     functionalImpactPoints = 1;
   }
 
-  // Factor 6 — Progressive worsening
+  // Factor 6 — Progressive worsening: +0 stable, +2 worsening
   let progressiveWorseningPoints = 0;
   const progressiveWorsening = factStore.progressiveWorsening as boolean | null;
   if (progressiveWorsening === true) {
     progressiveWorseningPoints = 2;
+  }
+
+  // ── Step C: Region-specific modifiers (spec Tree 4 Table) ──
+  let regionModifierPoints = 0;
+  const bodyRegion = factStore.bodyRegion as string | null;
+
+  if (bodyRegion) {
+    // BACK: Bilateral leg symptoms +2 (central stenosis / CES risk)
+    if (['lumbar_spine', 'lower_back', 'back'].includes(bodyRegion)) {
+      const bilateralLeg = factStore.bilateralLegSymptoms as boolean | null;
+      if (bilateralLeg === true) regionModifierPoints += 2;
+    }
+
+    // NECK: Hand dexterity loss +3 (myelopathy), VBI symptoms +4 (forces RED)
+    if (['cervical_spine', 'neck'].includes(bodyRegion)) {
+      const handDexterity = factStore.handDexterity as string | null;
+      if (handDexterity === 'significant') regionModifierPoints += 3;
+      if (redFlags.vbiSymptoms === true) regionModifierPoints += 4;
+    }
+
+    // SHOULDER: Complete loss of active elevation +3 → ORANGE minimum
+    if (['shoulder', 'shoulder_left', 'shoulder_right'].includes(bodyRegion)) {
+      if (redFlags.shoulderDeformity === true || redFlags.completeLossElevation === true) {
+        regionModifierPoints += 3;
+      }
+    }
+
+    // KNEE: Rapid swelling (<2 hrs post-injury) +2 — haemarthrosis signal
+    if (['knee', 'knee_left', 'knee_right'].includes(bodyRegion)) {
+      const swellingSpeed = factStore.swellingSpeed as string | null;
+      if (swellingSpeed === 'within_2_hours') regionModifierPoints += 2;
+      if (redFlags.rapidSwelling === true) regionModifierPoints += 2;
+    }
+
+    // HIP: Age <16 + groin + adolescent limp +3 → ORANGE minimum (SCFE)
+    if (['hip', 'hip_left', 'hip_right'].includes(bodyRegion)) {
+      const age = factStore.age as number | null;
+      const hipLocation = factStore.hipLocation as string | null;
+      const adolescentLimp = redFlags.adolescentLimp === true;
+      if (age && age < 16 && hipLocation === 'groin' && adolescentLimp) {
+        regionModifierPoints += 3;
+      }
+    }
+
+    // ANKLE: Unable to weight-bear 4 steps (Ottawa rules) +2
+    if (['ankle', 'ankle_left', 'ankle_right'].includes(bodyRegion)) {
+      if (redFlags.ottawaAnkle === true || redFlags.unableWeightbear === true) {
+        regionModifierPoints += 2;
+      }
+    }
+
+    // WRIST: Snuffbox tenderness post-fall +3 → ORANGE minimum (scaphoid)
+    if (['wrist_hand', 'wrist', 'hand'].includes(bodyRegion)) {
+      if (redFlags.snuffboxTenderness === true || redFlags.scaphoidRisk === true) {
+        regionModifierPoints += 3;
+      }
+    }
   }
 
   const totalScore =
@@ -144,13 +197,17 @@ export function computeRiskBreakdown(factStore: Record<string, unknown>): RiskFa
     neurologicalPoints +
     motorDeficitPoints +
     functionalImpactPoints +
-    progressiveWorseningPoints;
+    progressiveWorseningPoints +
+    regionModifierPoints;
 
-  // ── Step C: Map score to tier ──
+  // ── Step D: Map score to tier (spec thresholds) ──
+  // RED ≥12 (even without explicit red flag — e.g. combined modifiers)
+  // ORANGE 9-11, YELLOW 5-8, GREEN 3-4, BLUE 0-2
   let riskLevel: RiskLevel;
-  if (totalScore >= 8) riskLevel = 'ORANGE';
-  else if (totalScore >= 4) riskLevel = 'YELLOW';
-  else if (totalScore >= 1) riskLevel = 'GREEN';
+  if (totalScore >= 12) riskLevel = 'RED';
+  else if (totalScore >= 9) riskLevel = 'ORANGE';
+  else if (totalScore >= 5) riskLevel = 'YELLOW';
+  else if (totalScore >= 3) riskLevel = 'GREEN';
   else riskLevel = 'BLUE';
 
   return {
@@ -160,6 +217,7 @@ export function computeRiskBreakdown(factStore: Record<string, unknown>): RiskFa
     motorDeficitPoints,
     functionalImpactPoints,
     progressiveWorseningPoints,
+    regionModifierPoints,
     totalScore,
     riskLevel,
     redFlagOverride: false,

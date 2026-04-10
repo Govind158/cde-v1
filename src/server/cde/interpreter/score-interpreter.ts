@@ -1,12 +1,23 @@
 /**
  * Score Interpreter — Tree 6
  *
- * 5-step interpretation chain:
+ * 5-step interpretation chain per spec (kriya-cde-complete-tree-system.md Tree 6):
  *   1. Validate game result (range, duration, asymmetry)
  *   2. Compute percentile (normative data → linear fallback)
- *   3. Determine musculage contribution
- *   4. Compute trend (vs previous session — TODO: full implementation)
- *   5. Assess clinical relevance per hypothesis
+ *   3. Musculage contribution (weighted average BAL×0.25 + ROM×0.25 + MOB×0.25 + REF×0.25)
+ *   4. Trend vs previous session (TODO Phase 6)
+ *   5. Clinical relevance per hypothesis
+ *
+ * Percentile bands (spec 5-band system):
+ *   excellent     81-100 — Above age-normal, no deficit
+ *   good          61-80  — Within normal range
+ *   fair          41-60  — Borderline — monitor
+ *   below_average 21-40  — Deficit identified — intervention recommended
+ *   poor           0-20  — Significant deficit — priority intervention
+ *
+ * Asymmetry thresholds (spec):
+ *   Balance games (BB*): >20% side-to-side difference → flag
+ *   ROM games (FA*):     >15% side-to-side difference → flag
  */
 
 import type {
@@ -32,35 +43,35 @@ export function validateGameResult(
     return { valid: false, reason: 'unknown_game_id' };
   }
 
-  // Range check
   if (rawScore < spec.minPossibleScore || rawScore > spec.maxPossibleScore) {
     return { valid: false, reason: 'score_out_of_range', action: 'retry_with_guidance' };
   }
 
-  // Duration check — too fast
   if (durationSeconds !== undefined && durationSeconds > 0) {
     const minExpected = spec.expectedDurationRange[0] * 0.5;
     if (durationSeconds < minExpected) {
       return { valid: false, reason: 'completed_too_quickly', action: 'retry_with_instruction' };
     }
-    // Duration check — too long (probably paused)
     const maxExpected = spec.expectedDurationRange[1] * 3;
     if (durationSeconds > maxExpected) {
       return { valid: false, reason: 'duration_too_long', action: 'retry_with_instruction' };
     }
   }
 
-  // Bilateral asymmetry check
+  // Bilateral asymmetry — thresholds per spec:
+  //   Balance games (BB*): >20%  |  ROM games (FA*): >15%  |  others: >20%
   if (spec.bilateral && subScores) {
     const left = subScores.left ?? 0;
     const right = subScores.right ?? 0;
     const maxSide = Math.max(left, right, 1);
-    const asymmetry = (Math.abs(left - right) / maxSide) * 100;
-    if (asymmetry > 40) {
+    const asymmetryPct = (Math.abs(left - right) / maxSide) * 100;
+    const threshold = gameId.startsWith('FA') ? 15 : 20;
+
+    if (asymmetryPct > threshold) {
       return {
         valid: true,
         flag: 'high_asymmetry',
-        clinicalNote: `Significant L/R asymmetry (${Math.round(asymmetry)}%). May indicate unilateral pathology or measurement error.`,
+        clinicalNote: `Significant L/R asymmetry (${Math.round(asymmetryPct)}%). May indicate unilateral pathology or measurement error.`,
       };
     }
   }
@@ -76,28 +87,18 @@ export function computePercentile(
   age?: number,
   _sex?: string
 ): number {
-  // TODO: Query cdeNormativeData table for gameId + age band + sex
-  // When normative data is populated (Phase 4+), replace this fallback with:
-  //   SELECT * FROM cdeNormativeData WHERE gameId = ? AND ageBandMin <= ? AND ageBandMax >= ?
-  //   Then interpolate rawScore against p10, p25, p50, p75, p90
-
+  // TODO (Phase 4): Query cdeNormativeData for gameId + age band + sex
   const spec = GAME_CATALOG[gameId];
-  if (!spec) return 50; // safe default
+  if (!spec) return 50;
 
-  // Linear fallback: normalise rawScore to 0-100 percentile range
   const range = spec.maxPossibleScore - spec.minPossibleScore;
   if (range === 0) return 50;
 
   const normalized = (rawScore - spec.minPossibleScore) / range;
   const percentile = Math.min(99, Math.max(1, Math.round(normalized * 100)));
 
-  if (!age) {
-    // No age adjustment possible
-    return percentile;
-  }
+  if (!age) return percentile;
 
-  // Simple age adjustment: older adults get a slight boost (±5 percentile points)
-  // This is a rough heuristic until normative data is loaded.
   let ageAdjustment = 0;
   if (age >= 60) ageAdjustment = 5;
   else if (age >= 50) ageAdjustment = 3;
@@ -106,13 +107,49 @@ export function computePercentile(
   return Math.min(99, Math.max(1, percentile + ageAdjustment));
 }
 
-// ─── Step 3: Percentile Band ───
+// ─── Step 3a: 5-Band Classification (spec Tree 6) ───
 
 export function getPercentileBand(percentile: number): PercentileBand {
-  if (percentile < 10) return 'below_10th';
-  if (percentile < 25) return '10th_to_25th';
-  if (percentile <= 75) return '25th_to_75th';
-  return 'above_75th';
+  if (percentile >= 81) return 'excellent';      // Band 5
+  if (percentile >= 61) return 'good';           // Band 4
+  if (percentile >= 41) return 'fair';           // Band 3
+  if (percentile >= 21) return 'below_average';  // Band 2
+  return 'poor';                                 // Band 1
+}
+
+// ─── Step 3b: Musculage computation (spec Tree 6) ───
+// weightedAverage(BAL×0.25 + ROM×0.25 + MOB×0.25 + REF×0.25)
+// Redistributes weights equally when fewer than 4 categories tested.
+// Minimum 2 categories required for a valid musculage score.
+
+export function computeMusculage(
+  gameScores: Record<string, { percentile: number }>
+): number | null {
+  const categoryPercentiles: Partial<Record<'BAL' | 'ROM' | 'MOB' | 'REF', number[]>> = {};
+
+  for (const [gameId, score] of Object.entries(gameScores)) {
+    let cat: 'BAL' | 'ROM' | 'MOB' | 'REF' | null = null;
+    if (gameId.startsWith('BB')) cat = 'BAL';
+    else if (gameId.startsWith('FA')) cat = 'ROM';
+    else if (gameId.startsWith('KS')) cat = 'MOB';
+    else if (gameId.startsWith('NN')) cat = 'REF';
+    if (!cat) continue;
+    if (!categoryPercentiles[cat]) categoryPercentiles[cat] = [];
+    categoryPercentiles[cat]!.push(score.percentile);
+  }
+
+  const categories = Object.keys(categoryPercentiles) as Array<'BAL' | 'ROM' | 'MOB' | 'REF'>;
+  if (categories.length < 2) return null;
+
+  const weight = 1 / categories.length;
+  let musculage = 0;
+  for (const cat of categories) {
+    const vals = categoryPercentiles[cat]!;
+    const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+    musculage += avg * weight;
+  }
+
+  return Math.round(musculage);
 }
 
 // ─── Step 5 helper: Clinical Relevance ───
@@ -131,14 +168,14 @@ function assessClinicalRelevance(
     const recGames = hyp.recommendedGames ?? [];
     if (!recGames.includes(gameId)) continue;
 
-    if (percentile < 25) {
+    if (percentile <= 40) {
       relevance.push({
         hypothesisId: hyp.conditionId,
         conditionDisplayName: hyp.displayName,
         relationship: 'supports',
         explanation: `Your ${spec.parameterDisplayName} score is below average for your age, which is consistent with ${hyp.displayName}.`,
       });
-    } else if (percentile > 75) {
+    } else if (percentile >= 61) {
       relevance.push({
         hypothesisId: hyp.conditionId,
         conditionDisplayName: hyp.displayName,
@@ -158,20 +195,11 @@ function assessClinicalRelevance(
   return relevance;
 }
 
-// ─── Step 4 helper: Trend Lookup ───
-
-/**
- * Look up previous session result for trend comparison.
- * Returns null until cross-session persistence is wired (Phase 6).
- */
 function lookupTrend(
   _factStore: Record<string, unknown>,
   _gameId: string
 ): ScoreTrend | null {
-  // TODO (Phase 6): Query DB for previous game result:
-  //   SELECT percentile, playedAt FROM game_results
-  //   WHERE userId = factStore.userId AND gameId = _gameId
-  //   ORDER BY playedAt DESC LIMIT 1
+  // TODO (Phase 6): cross-session percentile comparison
   return null;
 }
 
@@ -186,7 +214,6 @@ export function interpretGameResult(
 ): ScoreInterpretation {
   const spec = GAME_CATALOG[gameId];
 
-  // Step 1 — Validate
   const validation = validateGameResult(gameId, rawScore, subScores, durationSeconds);
   if (!validation.valid) {
     return {
@@ -195,7 +222,7 @@ export function interpretGameResult(
       valid: false,
       validationIssue: validation.reason,
       percentile: 0,
-      percentileBand: 'below_10th',
+      percentileBand: 'poor',
       musculageContribution: null,
       trend: null,
       clinicalRelevance: [],
@@ -204,51 +231,50 @@ export function interpretGameResult(
     };
   }
 
-  // Step 2 — Compute percentile
   const age = (factStore.age ?? 30) as number;
   const sex = factStore.sex as string | undefined;
   const percentile = computePercentile(gameId, rawScore, age, sex);
   const percentileBand = getPercentileBand(percentile);
 
-  // Step 3 — Musculage contribution
-  let musculageContribution: string | null = null;
-  if (percentileBand === 'below_10th') musculageContribution = 'significantly_below';
-  else if (percentileBand === '10th_to_25th') musculageContribution = 'below_average';
-  else if (percentileBand === '25th_to_75th') musculageContribution = 'average';
-  else musculageContribution = 'above_average';
+  // Musculage contribution label (spec uses band name as contribution label)
+  const musculageContribution: string = percentileBand;
 
-  // Step 4 — Trend (TODO: query previous session results from DB)
-  // For now returns null. When cross-session persistence is wired (Phase 6),
-  // this will query: SELECT percentile FROM game_results WHERE userId = ? AND gameId = ? ORDER BY playedAt DESC LIMIT 1
   const trend: ScoreTrend | null = lookupTrend(factStore, gameId);
 
-  // Step 5 — Clinical relevance
   const hypotheses = (factStore.activeHypotheses ?? []) as Hypothesis[];
   const clinicalRelevance = assessClinicalRelevance(gameId, percentile, hypotheses);
 
-  // Build summaries
   const bandLabels: Record<PercentileBand, string> = {
-    below_10th: 'significantly below average',
-    '10th_to_25th': 'slightly below average',
-    '25th_to_75th': 'within the normal range',
-    above_75th: 'above average',
+    poor: 'significantly below average',
+    below_average: 'below average',
+    fair: 'in the borderline range',
+    good: 'within the normal range',
+    excellent: 'above average',
+  };
+
+  const bandClinical: Record<PercentileBand, string> = {
+    poor: 'A significant deficit was identified — this is a priority area for intervention.',
+    below_average: 'A deficit was identified — intervention is recommended.',
+    fair: 'Borderline results — monitoring is advised.',
+    good: 'Within normal range for your age group.',
+    excellent: 'Above age-normal — no deficit detected.',
   };
 
   const paramName = spec?.parameterDisplayName ?? gameId;
 
-  const patientFacingSummary = `Your ${paramName} is ${bandLabels[percentileBand]} for your age group.${
-    validation.flag === 'high_asymmetry'
+  const patientFacingSummary =
+    `Your ${paramName} is ${bandLabels[percentileBand]} for your age group. ${bandClinical[percentileBand]}` +
+    (validation.flag === 'high_asymmetry'
       ? ' We also noticed a significant difference between your left and right sides.'
-      : ''
-  }${
-    trend
+      : '') +
+    (trend
       ? ` Compared to your last assessment, your score has ${trend.direction} by ${Math.abs(trend.changePercent)}%.`
-      : ''
-  }`;
+      : '');
 
-  const clinicianFacingSummary = `${gameId}: raw=${rawScore}, percentile=${percentile} (${percentileBand})${
-    validation.flag ? `, flag=${validation.flag}` : ''
-  }${trend ? `, trend=${trend.direction} ${trend.changePercent}%` : ''}`;
+  const clinicianFacingSummary =
+    `${gameId}: raw=${rawScore}, percentile=${percentile} (${percentileBand})` +
+    (validation.flag ? `, flag=${validation.flag}` : '') +
+    (trend ? `, trend=${trend.direction} ${trend.changePercent}%` : '');
 
   return {
     gameId,

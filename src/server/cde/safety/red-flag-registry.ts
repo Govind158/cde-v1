@@ -342,6 +342,316 @@ export const RED_FLAG_REGISTRY: RedFlagDefinition[] = [
       ],
     },
   },
+
+  // ═══════════════════════════════════════════
+  // REGION-SPECIFIC — BACK
+  // ═══════════════════════════════════════════
+
+  {
+    id: 'rf_bilateral_neuro',
+    displayName: 'Bilateral Lower Limb Neurological Deficit',
+    clinicalConcern: 'Bilateral leg numbness or weakness suggesting central canal stenosis or early cauda equina',
+    urgency: 'urgent_24h',
+    haltMessage: 'Numbness or loss of sensation in both legs that is worsening may indicate pressure on the spinal canal. This needs urgent medical evaluation.',
+    haltAction: 'Contact your GP for an urgent same-day appointment or attend A&E if symptoms are rapidly worsening.',
+    sourcePrds: ['LBP', 'Spondylosis'],
+    requiresCoordination: true,
+    coordinatedModules: ['disc_bulge', 'spondylosis'],
+    criteria: {
+      ALL: [
+        { field: 'redFlags.bilateralLegNumbness', equals: true },
+      ],
+    },
+  },
+
+  {
+    id: 'rf_night_pain_unrelenting',
+    displayName: 'Unrelenting Night Pain (Cancer / Infection Screen)',
+    clinicalConcern: 'Constant pain unrelieved by any position — raises concern for neoplastic or infective cause',
+    urgency: 'urgent_24h',
+    haltMessage: 'Pain that is constant at night and does not improve with any position or movement needs urgent medical evaluation to rule out serious causes.',
+    haltAction: 'See your GP urgently within 24 hours. Blood tests and imaging may be needed.',
+    sourcePrds: ['LBP', 'Neck'],
+    requiresCoordination: false,
+    coordinatedModules: [],
+    criteria: {
+      ALL: [
+        { field: 'redFlags.nightPainUnrelenting', equals: true },
+      ],
+    },
+  },
+
+  // ═══════════════════════════════════════════
+  // REGION-SPECIFIC — NECK
+  // ═══════════════════════════════════════════
+
+  {
+    id: 'rf_hand_clumsiness',
+    displayName: 'Hand Clumsiness (Myelopathy Screen)',
+    clinicalConcern: 'Fine motor difficulty suggesting cervical cord compression (myelopathy)',
+    urgency: 'urgent_24h',
+    haltMessage: 'Difficulty with fine hand movements such as buttoning a shirt or writing may indicate pressure on the spinal cord in your neck. This needs urgent assessment.',
+    haltAction: 'See your GP urgently or attend A&E if symptoms are severe or worsening rapidly.',
+    sourcePrds: ['Neck Pain'],
+    requiresCoordination: false,
+    coordinatedModules: [],
+    criteria: {
+      ALL: [
+        { field: 'handDexterity', equals: 'significant' },
+      ],
+    },
+  },
+
+  {
+    id: 'rf_gait_disturbance',
+    displayName: 'Gait Disturbance (Myelopathy Screen)',
+    clinicalConcern: 'Balance or walking deterioration suggesting cervical cord compromise',
+    urgency: 'urgent_24h',
+    haltMessage: 'Worsening balance or walking difficulties may indicate spinal cord involvement in the neck. This requires urgent specialist evaluation.',
+    haltAction: 'See your GP urgently or attend A&E if symptoms are progressive.',
+    sourcePrds: ['Neck Pain'],
+    requiresCoordination: false,
+    coordinatedModules: [],
+    criteria: {
+      ALL: [
+        { field: 'gaitChange', equals: 'noticeably' },
+      ],
+    },
+  },
+
+  {
+    id: 'rf_vbi_symptoms',
+    displayName: 'Vertebrobasilar Insufficiency (VBI)',
+    clinicalConcern: 'Vascular compromise to the brainstem on cervical movement — IMMEDIATE risk',
+    urgency: 'immediate',
+    haltMessage: 'Symptoms such as double vision, slurred speech, difficulty swallowing, or blackouts when moving your neck may indicate a serious vascular condition. This requires emergency assessment.',
+    haltAction: 'Call 112 immediately or go to your nearest A&E. Do not move your neck forcefully.',
+    sourcePrds: ['Neck Pain'],
+    requiresCoordination: false,
+    coordinatedModules: [],
+    criteria: {
+      ALL: [
+        { field: 'redFlags.vbiSymptoms', equals: true },
+      ],
+    },
+  },
+
+  // ═══════════════════════════════════════════
+  // REGION-SPECIFIC — SHOULDER
+  // ═══════════════════════════════════════════
+
+  {
+    id: 'rf_complete_loss_elevation',
+    displayName: 'Complete Loss of Active Arm Elevation',
+    clinicalConcern: 'Full rotator cuff tear or proximal humeral fracture after trauma',
+    urgency: 'urgent_24h',
+    haltMessage: 'Complete inability to lift your arm away from your body after an injury may indicate a significant structural injury to your shoulder. Early assessment improves outcomes.',
+    haltAction: 'Attend A&E or an urgent care clinic within 24 hours. Use a sling for comfort and apply ice.',
+    sourcePrds: ['Shoulder Pain', 'Rotator Cuff'],
+    requiresCoordination: false,
+    coordinatedModules: [],
+    criteria: {
+      ALL: [
+        { field: 'redFlags.completeLossElevation', equals: true },
+      ],
+    },
+  },
+
+  {
+    id: 'rf_deformity',
+    displayName: 'Shoulder Deformity / Dislocation',
+    clinicalConcern: 'Glenohumeral dislocation requiring urgent reduction',
+    urgency: 'urgent_24h',
+    haltMessage: 'A visibly deformed shoulder after an injury suggests a possible dislocation. This needs urgent assessment and reduction to prevent complications.',
+    haltAction: 'Go to A&E within 24 hours. Do not attempt to reduce the joint yourself. Immobilize and apply ice.',
+    sourcePrds: ['Shoulder Pain'],
+    requiresCoordination: false,
+    coordinatedModules: [],
+    criteria: {
+      ALL: [
+        { field: 'redFlags.shoulderDeformity', equals: true },
+      ],
+    },
+  },
+
+  // ═══════════════════════════════════════════
+  // REGION-SPECIFIC — KNEE
+  // ═══════════════════════════════════════════
+
+  {
+    id: 'rf_rapid_swelling',
+    displayName: 'Rapid Knee Swelling (<2 hours post-injury)',
+    clinicalConcern: 'Haemarthrosis indicating ACL rupture, tibial plateau fracture, or significant internal derangement',
+    urgency: 'urgent_24h',
+    haltMessage: 'Rapid knee swelling within 2 hours of an injury indicates bleeding into the joint, which requires urgent assessment to rule out fracture or ligament rupture.',
+    haltAction: 'Attend A&E or an urgent orthopaedic clinic within 24 hours. Elevate and ice the knee.',
+    sourcePrds: ['Knee'],
+    requiresCoordination: false,
+    coordinatedModules: [],
+    criteria: {
+      ANY: [
+        { field: 'swellingSpeed', equals: 'within_2_hours' },
+        { field: 'redFlags.rapidSwelling', equals: true },
+      ],
+    },
+  },
+
+  {
+    id: 'rf_hot_joint',
+    displayName: 'Hot, Red, Swollen Knee with Fever',
+    clinicalConcern: 'Septic arthritis of the knee — medical emergency',
+    urgency: 'immediate',
+    haltMessage: 'A hot, red, swollen knee combined with fever is a medical emergency that may indicate a joint infection requiring immediate treatment.',
+    haltAction: 'Go to A&E immediately or call 112. Joint infections require urgent antibiotic treatment and may need drainage.',
+    sourcePrds: ['Knee'],
+    requiresCoordination: false,
+    coordinatedModules: [],
+    criteria: {
+      ALL: [
+        { field: 'redFlags.hotRedSwollenJoint', equals: true },
+        { field: 'redFlags.fever', equals: true },
+      ],
+    },
+  },
+
+  // ═══════════════════════════════════════════
+  // REGION-SPECIFIC — HIP
+  // ═══════════════════════════════════════════
+
+  {
+    id: 'rf_shortened_er_leg',
+    displayName: 'Shortened / Externally Rotated Leg Post-Fall',
+    clinicalConcern: 'Femoral neck fracture — cannot weight-bear, leg shortened and rotated out',
+    urgency: 'immediate',
+    haltMessage: 'A leg that appears shortened or turned outward after a fall, with inability to bear weight, may indicate a hip fracture. This is a medical emergency.',
+    haltAction: 'Call 112 immediately. Do not attempt to walk or bear weight on the affected leg.',
+    sourcePrds: ['Hip'],
+    requiresCoordination: false,
+    coordinatedModules: [],
+    criteria: {
+      ALL: [
+        { field: 'redFlags.shortenedErLeg', equals: true },
+      ],
+    },
+  },
+
+  {
+    id: 'rf_adolescent_limp',
+    displayName: 'Adolescent Hip Limp (SCFE Screen)',
+    clinicalConcern: 'Slipped capital femoral epiphysis — age 10-16 with groin pain and limp',
+    urgency: 'urgent_24h',
+    haltMessage: 'Groin pain with a limp in a young person aged 10-16 may indicate slipped capital femoral epiphysis (SCFE) — a condition requiring urgent orthopaedic assessment.',
+    haltAction: 'See your GP urgently or attend A&E within 24 hours. Do not delay — early treatment prevents serious complications.',
+    sourcePrds: ['Hip'],
+    requiresCoordination: false,
+    coordinatedModules: [],
+    criteria: {
+      ALL: [
+        { field: 'redFlags.adolescentLimp', equals: true },
+        { field: 'age', lessThan: 17 },
+      ],
+    },
+  },
+
+  // ═══════════════════════════════════════════
+  // REGION-SPECIFIC — ANKLE
+  // ═══════════════════════════════════════════
+
+  {
+    id: 'rf_unable_weightbear_4steps',
+    displayName: 'Unable to Weight-Bear 4 Steps (Ottawa Ankle Rules)',
+    clinicalConcern: 'Ankle or foot fracture — Ottawa ankle rules positive',
+    urgency: 'urgent_24h',
+    haltMessage: 'Inability to take 4 steps after an ankle injury suggests a possible fracture. An X-ray is needed to rule this out.',
+    haltAction: 'Attend A&E for X-ray imaging. Do not bear weight on the ankle. Elevate and apply ice.',
+    sourcePrds: ['Ankle'],
+    requiresCoordination: false,
+    coordinatedModules: [],
+    criteria: {
+      ANY: [
+        { field: 'redFlags.ottawaAnkle', equals: true },
+        { field: 'redFlags.unableWeightbear', equals: true },
+      ],
+    },
+  },
+
+  {
+    id: 'rf_achilles_pop',
+    displayName: 'Achilles Pop with Inability to Push Off',
+    clinicalConcern: 'Complete Achilles tendon rupture requiring urgent surgical evaluation',
+    urgency: 'immediate',
+    haltMessage: 'A sudden pop at the back of your ankle with inability to push off your toes suggests an Achilles tendon rupture. This needs urgent medical attention.',
+    haltAction: 'Go to A&E as soon as possible. Avoid walking on the leg. Apply ice and keep it elevated.',
+    sourcePrds: ['Ankle'],
+    requiresCoordination: false,
+    coordinatedModules: [],
+    criteria: {
+      ANY: [
+        { field: 'redFlags.achillesPop', equals: true },
+        { field: 'redFlags.suddenPop', equals: true },
+      ],
+    },
+  },
+
+  // ═══════════════════════════════════════════
+  // REGION-SPECIFIC — ELBOW
+  // ═══════════════════════════════════════════
+
+  {
+    id: 'rf_elbow_locked_deformed',
+    displayName: 'Elbow Locked / Visibly Deformed Post-Injury',
+    clinicalConcern: 'Elbow dislocation or fracture requiring urgent reduction and imaging',
+    urgency: 'urgent_24h',
+    haltMessage: 'An elbow that is locked in a bent position or visibly deformed after an injury may indicate a dislocation or fracture requiring urgent orthopaedic assessment.',
+    haltAction: 'Go to A&E within 24 hours. Immobilize the arm in a comfortable position. Apply ice.',
+    sourcePrds: ['Elbow'],
+    requiresCoordination: false,
+    coordinatedModules: [],
+    criteria: {
+      ANY: [
+        { field: 'redFlags.elbowLockedDeformed', equals: true },
+      ],
+    },
+  },
+
+  // ═══════════════════════════════════════════
+  // REGION-SPECIFIC — WRIST / HAND
+  // ═══════════════════════════════════════════
+
+  {
+    id: 'rf_snuffbox_tenderness',
+    displayName: 'Anatomical Snuffbox Tenderness Post-Fall (Scaphoid Fracture)',
+    clinicalConcern: 'Scaphoid fracture — often missed on initial X-ray; avascular necrosis risk if untreated',
+    urgency: 'urgent_24h',
+    haltMessage: 'Pain at the base of your thumb in the "snuffbox" area after a fall on an outstretched hand is a classic sign of scaphoid fracture. This needs urgent imaging.',
+    haltAction: 'Attend A&E for X-ray and clinical assessment within 24 hours. A CT or MRI may be needed even if X-ray appears normal.',
+    sourcePrds: ['Wrist'],
+    requiresCoordination: false,
+    coordinatedModules: [],
+    criteria: {
+      ANY: [
+        { field: 'redFlags.snuffboxTenderness', equals: true },
+        { field: 'redFlags.scaphoidRisk', equals: true },
+      ],
+    },
+  },
+
+  {
+    id: 'rf_kanavel_signs',
+    displayName: 'Kanavel Signs (Flexor Sheath Infection)',
+    clinicalConcern: 'Flexor tendon sheath infection — surgical emergency requiring immediate washout',
+    urgency: 'immediate',
+    haltMessage: 'A finger that is red, swollen like a sausage, held bent, and extremely painful to straighten may indicate a serious infection of the tendon sheath. This is a surgical emergency.',
+    haltAction: 'Call 112 or go to A&E immediately. Flexor sheath infections require urgent surgical washout to prevent permanent tendon damage.',
+    sourcePrds: ['Wrist', 'Hand'],
+    requiresCoordination: false,
+    coordinatedModules: [],
+    criteria: {
+      ANY: [
+        { field: 'redFlags.kanavelSigns', equals: true },
+      ],
+    },
+  },
 ];
 
 /** Get all flags by urgency tier */

@@ -434,19 +434,13 @@ export class CDEEngine {
     );
 
     // 2. Store game result with full interpretation
-    const bandMap: Record<string, GameScoreEntry['band']> = {
-      below_10th: 'below_10',
-      '10th_to_25th': '10_to_25',
-      '25th_to_75th': '25_to_75',
-      above_75th: 'above_75',
-    };
-
+    // PercentileBand is now the 5-band spec system; GameScoreEntry.band matches directly.
     const scoreEntry: GameScoreEntry = {
       rawScore,
       percentile: interpretation.valid ? interpretation.percentile : 0,
       band: interpretation.valid
-        ? (bandMap[interpretation.percentileBand] ?? 'below_10')
-        : 'below_10',
+        ? (interpretation.percentileBand as GameScoreEntry['band'])
+        : 'poor',
       interpretation: interpretation.valid
         ? interpretation.patientFacingSummary
         : (interpretation.validationIssue ?? 'Invalid result'),
@@ -704,8 +698,12 @@ export class CDEEngine {
     let factStore: FactStoreManager;
 
     if (walker) {
-      // Walker exists in cache; extract fact store from walker
-      factStore = new FactStoreManager(walker['factStore']?.getStore?.() ?? {});
+      // Return the walker's internal factStore by direct reference — NOT a copy.
+      // Creating a copy here causes a critical data-loss bug: walker.processAnswer()
+      // writes question answers and activeHypotheses to this.factStore (the walker's
+      // internal instance), but saveSession would save the pre-answer snapshot,
+      // so hypothesis data, wristLocation, etc. would never reach the DB.
+      factStore = (walker as any).factStore as FactStoreManager;
     } else {
       // Load from database
       try {
