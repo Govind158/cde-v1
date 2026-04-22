@@ -69,10 +69,20 @@ export function scoreAll(region: RegionKey, d: PatientData): ScoredCondition[] {
         'For more than 3 months': 'chronic',
       };
       const durKey = d.L150101 ? durMap[d.L150101] : undefined;
-      if (durKey && c.dur.includes(durKey)) s += 2;
+      // Conditions marked dur:'either' match both acute and chronic windows.
+      // Without this, disc bulge / herniation and other multi-window
+      // conditions silently fail the duration check (Finding #4).
+      if (durKey && (c.dur.includes(durKey) || c.dur.includes('either'))) s += 2;
 
       // Status / trend
-      if (d.L030901 === 'Worsening' && c.status.includes('worsening')) s += 2;
+      // "worsening" exact match → +2.
+      // "progressive" / "worse" synonym → +1 (partial credit) so the
+      // Worsening bonus is not a de-facto red-flag-only bonus (see
+      // Finding #3 in the clinical audit).
+      if (d.L030901 === 'Worsening') {
+        if (c.status.includes('worsening')) s += 2;
+        else if (c.status.includes('progressive') || c.status.includes('worse')) s += 1;
+      }
       if (d.L030901 === 'Much better than before' && c.status.includes('improving')) s += 1.5;
       if (d.L030901 === 'Same as before' && c.status.includes('same')) s += 1;
 
@@ -84,16 +94,28 @@ export function scoreAll(region: RegionKey, d: PatientData): ScoredCondition[] {
       if (hasNeuro && c.neuro === 'affected') s += 3;
       if (!hasNeuro && c.neuro === 'wnl') s += 1;
 
-      // Features — fuzzy match across several multi-select fields
+      // Features — fuzzy match across several multi-select fields.
+      //
+      // Only forward match: the user's text must CONTAIN the condition's
+      // feature phrase. The previous reverse check `fLo.includes(uf.substring(0, 6))`
+      // caused a clinically unsafe false positive: any user selecting any
+      // "History of X" medical condition produced the 6-char prefix "histor",
+      // which is a substring of "history of cancer" (a feature on Cancer /
+      // Malignancy and Shoulder Fracture) — effectively flagging cancer for
+      // anyone with a neurological-condition or TB history.
       const allFeats = [
         ...(d.L031001 ?? []),
         ...(d.L170101 ?? []),
         ...(d.L170201 ?? []),
         ...(d.L030801 ?? []),
       ].map(lo);
+      let featMatchCount = 0;
       (c.feat ?? []).forEach((f) => {
         const fLo = lo(f);
-        if (allFeats.some((uf) => uf.includes(fLo) || fLo.includes(uf.substring(0, 6)))) s += 1.5;
+        if (allFeats.some((uf) => uf.includes(fLo))) {
+          s += 1.5;
+          featMatchCount += 1;
+        }
       });
 
       // Age
@@ -124,6 +146,25 @@ export function scoreAll(region: RegionKey, d: PatientData): ScoredCondition[] {
 
       // Relapse + chronic
       if (d.L150102 === 'Yes' && c.dur.includes('chronic')) s += 1;
+
+      // Red-flag gating — clinical safety guard.
+      //
+      // A red-flag diagnosis (Cancer/Malignancy, Cauda Equina, Fracture,
+      // Infection) must NEVER surface on non-specific signals alone
+      // (constant pain + worsening trend + chronic duration + severe scale
+      // + neuro symptoms can otherwise reach 11+ points on every red flag
+      // regardless of the user's actual condition history).
+      //
+      // If the user has matched ZERO specific features of a red-flag
+      // condition (no "history of cancer", no "night pain", no
+      // "unexplained weight loss", no "post-traumatic", no "urine control
+      // loss", etc.), we cap its score so it cannot outrank legitimate
+      // green/yellow conditions driven by specific matches. A red flag
+      // that DOES have ≥1 specific feature match is left unchanged and
+      // will still surface (and still wins the FLAG_WEIGHT tie-break).
+      if (c.flag === 'red' && featMatchCount === 0) {
+        s = Math.min(s, 2.5);
+      }
 
       return {
         name: c.name,
