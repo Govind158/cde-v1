@@ -53,7 +53,7 @@ export function bmiInsight(b: number): BmiInsight {
   if (b < 35)
     return {
       t: 'Oops! Your BMI may need urgent attention',
-      m: "A BMI over 30 may put strain on your muscles and joints. Even small, steady changes in activity, nutrition and rest can lead to real progress. You deserve to feel strong and we're with you 😊",
+      m: "A BMI over 30 may put strain on your muscles and joints. Even small, steady changes in activity, nutrition and rest can lead to real progress. You deserve to feel strong and we're with you 💪",
       c: '#f97316',
       e: '😬',
     };

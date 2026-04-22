@@ -276,13 +276,22 @@ export default function DiagnosticsChat() {
         }
       }
 
-      // 5. Advance to next node — skip any nodes whose field is already filled
-      // (e.g., from a prior LLM extraction) so the user is never re-asked
-      // a question they already answered in free-text.
+      // 5. Advance to the IMMEDIATE next node the branching function returns.
+      //
+      // Do NOT walk findNextUnansweredFrom here: in the chip-commit path the
+      // user is actively in the structured flow and every branch sub-question
+      // (e.g. relief → relief-duration, surgery → surgery-recent, past-
+      // treatment → past-treatment-outcome) must be asked so the user can
+      // answer or adjust it. Silent skip-ahead caused the user to tap a
+      // reducing activity and never be asked "how long until it reduces",
+      // because a prior LLM extraction had populated L210102.
+      //
+      // findNextUnansweredFrom is still used on the extraction-confirmation
+      // path where it is correct — extraction can legitimately pre-fill many
+      // future fields and the user expects those questions to be skipped.
       const immediateNext = node.next(newData);
       if (immediateNext) {
-        const skipToId = findNextUnansweredFrom(immediateNext, newData);
-        await advanceTo(skipToId, newData);
+        await advanceTo(immediateNext, newData);
       }
     },
     [advanceTo, emitBubbles, state.currentId, state.data],

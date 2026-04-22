@@ -147,6 +147,26 @@ export function scoreAll(region: RegionKey, d: PatientData): ScoredCondition[] {
       // Relapse + chronic
       if (d.L150102 === 'Yes' && c.dur.includes('chronic')) s += 1;
 
+      // Post-surgical gating — a post-surgical condition MUST require
+      // a prior relevant surgery. Its generic features (numbness,
+      // tingling, burning) are shared with every neuro-positive
+      // presentation and otherwise cause the condition to surface for
+      // anyone with radicular symptoms — even those who explicitly
+      // selected "No surgeries". Only the "failed surgery" feat is
+      // specific. If the user has not reported a relevant prior
+      // surgery, zero the score. Surgery options that qualify for
+      // back/neck: "Spine surgery". (Other surgery types map to their
+      // anatomical regions, but conditions-db only has
+      // Post-Surgical Back Pain / Neck Pain today.)
+      if (c.name.startsWith('Post-Surgical')) {
+        const surgery = d.L170301;
+        const noRelevantSurgery =
+          !surgery || surgery === 'No surgeries';
+        if (noRelevantSurgery) {
+          s = 0;
+        }
+      }
+
       // Red-flag gating — clinical safety guard.
       //
       // A red-flag diagnosis (Cancer/Malignancy, Cauda Equina, Fracture,
