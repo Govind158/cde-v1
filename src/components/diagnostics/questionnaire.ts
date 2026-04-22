@@ -146,7 +146,6 @@ export const FLOW: QuestionNode[] = [
     kind: 'chips-single',
     intro: [
       "Let's start with a short profile.",
-      'We stopped tracking age after the dinosaurs left — but doctors say it\'s mandatory for curating a wellness profile 🦕',
     ],
     prompt: 'Gender',
     options: ['Male', 'Female', 'Transgender', 'Prefer not to say'],
@@ -156,7 +155,10 @@ export const FLOW: QuestionNode[] = [
     id: 'age',
     field: 'L010301',
     kind: 'number',
-    intro: ['Thanks. And how old are you?'],
+    intro: [
+      'We stopped tracking age after the dinosaurs left — but doctors say it\'s mandatory for curating a wellness profile 🦕',
+      'How old are you?',
+    ],
     prompt: 'Age',
     next: () => 'height-weight',
   },
@@ -462,7 +464,13 @@ export const FLOW: QuestionNode[] = [
       'Exercise / Sports (running, gym, recreational)',
       "Pain doesn't aggravate",
     ],
-    next: (d) => (d.L190201?.includes("doesn't") ? 'relief' : 'aggravation-duration'),
+    next: (d) => {
+      // Only ask aggravation-duration when the user said the pain DOES aggravate.
+      // If L190201 is missing OR matches the "doesn't aggravate" option, skip straight to relief.
+      const v = d.L190201;
+      if (!v || v === "Pain doesn't aggravate" || v.toLowerCase().includes("doesn't")) return 'relief';
+      return 'aggravation-duration';
+    },
   },
 
   // ── S9 Aggravation Duration ──

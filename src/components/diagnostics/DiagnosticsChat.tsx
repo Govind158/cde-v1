@@ -276,8 +276,14 @@ export default function DiagnosticsChat() {
         }
       }
 
-      // 5. Advance to next node
-      await advanceTo(node.next(newData), newData);
+      // 5. Advance to next node — skip any nodes whose field is already filled
+      // (e.g., from a prior LLM extraction) so the user is never re-asked
+      // a question they already answered in free-text.
+      const immediateNext = node.next(newData);
+      if (immediateNext) {
+        const skipToId = findNextUnansweredFrom(immediateNext, newData);
+        await advanceTo(skipToId, newData);
+      }
     },
     [advanceTo, emitBubbles, state.currentId, state.data],
   );
@@ -521,6 +527,15 @@ export default function DiagnosticsChat() {
 
       const patches = entry.patches;
 
+      // Determine whether the CURRENT node's field was extracted — if so,
+      // its chips-question bubble (if any) should be marked resolved.
+      const currentNode = getNode(state.currentId);
+      const currentFieldFilled = !!(currentNode?.field && currentNode.field in patches);
+      const currentFieldValue =
+        currentNode?.field && currentFieldFilled
+          ? (patches as Record<string, unknown>)[currentNode.field]
+          : undefined;
+
       // Apply patches to data, re-deriving BMI if height/weight changed
       let newData: PatientData = state.data;
       setState((s) => {
@@ -532,15 +547,37 @@ export default function DiagnosticsChat() {
             newData.bmi = Math.round((w / (hm * hm)) * 10) / 10;
           }
         }
+        // Locate the most recent unresolved chips-question — that's the
+        // current node's input bubble. If the current field was filled by
+        // the extraction patches, mark it resolved so the UI stops showing
+        // it as open.
+        let lastOpenChipsIdx = -1;
+        if (currentFieldFilled) {
+          for (let i = s.entries.length - 1; i >= 0; i -= 1) {
+            const en = s.entries[i];
+            if (en && en.role === 'bot' && en.kind === 'chips-question' && !en.resolved) {
+              lastOpenChipsIdx = i;
+              break;
+            }
+          }
+        }
         return {
           ...s,
           data: newData,
           awaitingExtraction: null,
-          entries: s.entries.map((en) =>
-            en.id === entryId && en.role === 'bot' && en.kind === 'extraction-summary'
-              ? { ...en, resolved: 'confirmed' as const }
-              : en,
-          ),
+          entries: s.entries.map((en, idx) => {
+            if (en.id === entryId && en.role === 'bot' && en.kind === 'extraction-summary') {
+              return { ...en, resolved: 'confirmed' as const };
+            }
+            if (
+              idx === lastOpenChipsIdx &&
+              en.role === 'bot' &&
+              en.kind === 'chips-question'
+            ) {
+              return { ...en, resolved: currentFieldValue as string | string[] };
+            }
+            return en;
+          }),
         };
       });
 
@@ -564,10 +601,34 @@ export default function DiagnosticsChat() {
         }
       }
 
-      // Advance to the first unanswered node
-      const nextNode = findNextUnanswered(newData);
-      if (nextNode && nextNode !== state.currentId) {
-        await advanceTo(nextNode, newData);
+      // Advance to the first unanswered node. If the current field was
+      // filled by extraction, skip forward from the current node's next;
+      // otherwise stay on the current node but tell the user we still
+      // need that specific answer.
+      if (currentFieldFilled && currentNode) {
+        const immediateNext = currentNode.next(newData);
+        if (immediateNext) {
+          const skipToId = findNextUnansweredFrom(immediateNext, newData);
+          await advanceTo(skipToId, newData);
+        }
+      } else if (currentNode) {
+        // The current question wasn't answered by the free text — walk
+        // forward past any fields that WERE filled (in case extraction
+        // covered later nodes) to land on the earliest still-unanswered
+        // node, which may still be the current one.
+        const skipToId = findNextUnansweredFrom(state.currentId, newData);
+        if (skipToId === state.currentId) {
+          await emitBubbles([
+            {
+              id: nextIdStr(),
+              role: 'bot',
+              kind: 'text',
+              text: `I still need an answer for the question above — please pick an option.`,
+            },
+          ]);
+        } else {
+          await advanceTo(skipToId, newData);
+        }
       }
     },
     [advanceTo, emitBubbles, handleFollowupChain, state.currentId, state.data, state.entries],
@@ -819,6 +880,41 @@ function findNextUnanswered(data: PatientData): string {
     }
 
     currentId = n.next(data);
+  }
+  return 'processing';
+}
+
+/**
+ * Walk the flow starting at `startId`, skipping any nodes whose `field` is
+ * already populated in `data`. Returns the first node that still needs
+ * input (or `processing` if the walk completes). Used by `commit` so that
+ * after a chip tap, we advance past any later nodes whose fields were
+ * already filled by a prior LLM extraction.
+ */
+function findNextUnansweredFrom(startId: string, data: PatientData): string {
+  let currentId: string | null = startId;
+  let hops = 0;
+  while (currentId && hops < 100) {
+    hops += 1;
+    const n = getNode(currentId);
+    if (!n) break;
+    if (n.kind === 'processing' || n.kind === 'results') return currentId;
+
+    if (n.field) {
+      const v = (data as Record<string, unknown>)[n.field];
+      const isEmpty =
+        v === undefined ||
+        v === null ||
+        v === '' ||
+        (Array.isArray(v) && v.length === 0);
+      if (isEmpty) return currentId;
+      // Field already populated — skip forward
+      currentId = n.next(data);
+      continue;
+    }
+
+    // Field-less node (info, welcome) — stop here so intro/Begin can play
+    return currentId;
   }
   return 'processing';
 }
