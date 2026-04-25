@@ -21,6 +21,71 @@ import { useEffect, useRef, useState } from 'react';
 import { GC, Btn, Chip, Lbl } from './primitives';
 import { severityColor, flagColor, flagLabel } from './scoring';
 import type { ChatEntry, DiagnosticResult, NoPainResult } from './types';
+import { isPreRelease, OPEN_BLOCKERS } from '@/lib/release-stage';
+
+/**
+ * Open-blockers panel — only renders when stage !== 'prod'.  Shows the
+ * clinical UAT team exactly what is still pending so they can adjudicate
+ * the result they see against known-incomplete items.
+ */
+function OpenBlockersPanel() {
+  if (!isPreRelease()) return null;
+  if (OPEN_BLOCKERS.length === 0) return null;
+  return (
+    <GC
+      style={{
+        padding: '12px 14px',
+        background: 'rgba(245,158,11,0.06)',
+        border: '1px solid rgba(245,158,11,0.30)',
+      }}
+    >
+      <div
+        style={{
+          fontSize: 10,
+          fontWeight: 700,
+          color: '#fbbf24',
+          textTransform: 'uppercase',
+          letterSpacing: '0.12em',
+          marginBottom: 8,
+        }}
+      >
+        🔬 Clinical UAT — Open Items ({OPEN_BLOCKERS.length})
+      </div>
+      <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
+        {OPEN_BLOCKERS.map((b) => (
+          <li
+            key={b.id}
+            style={{
+              fontSize: 11,
+              color: '#fde68a',
+              lineHeight: 1.5,
+              padding: '6px 0',
+              borderTop: '1px solid rgba(245,158,11,0.12)',
+            }}
+          >
+            <span
+              style={{
+                display: 'inline-block',
+                fontSize: 9,
+                fontWeight: 800,
+                background: b.severity === 'block' ? 'rgba(239,68,68,0.25)' : 'rgba(245,158,11,0.25)',
+                color: b.severity === 'block' ? '#fca5a5' : '#fcd34d',
+                padding: '1px 6px',
+                borderRadius: 4,
+                marginRight: 6,
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+              }}
+            >
+              {b.id} · {b.severity}
+            </span>
+            <strong>{b.title}.</strong> {b.detail}
+          </li>
+        ))}
+      </ul>
+    </GC>
+  );
+}
 
 interface Props {
   entries: ChatEntry[];
@@ -420,7 +485,7 @@ function ChatBubble({
 function ResultCard({ result }: { result: DiagnosticResult | NoPainResult }) {
   if ('noPain' in result && result.noPain) {
     return (
-      <div style={{ alignSelf: 'flex-start', maxWidth: '95%' }}>
+      <div style={{ alignSelf: 'flex-start', maxWidth: '95%', display: 'flex', flexDirection: 'column', gap: 10 }}>
         <GC v="glow" style={{ padding: 20, textAlign: 'center' }}>
           <div style={{ fontSize: 44, marginBottom: 10 }}>✅</div>
           <h2
@@ -437,7 +502,20 @@ function ResultCard({ result }: { result: DiagnosticResult | NoPainResult }) {
           <p style={{ fontSize: 13, color: '#94a3b8', margin: 0, lineHeight: 1.55 }}>
             {result.action}
           </p>
+          <p
+            style={{
+              fontSize: 11,
+              color: 'rgba(134,239,172,0.9)',
+              margin: '14px 0 0',
+              lineHeight: 1.5,
+              borderTop: '1px solid rgba(255,255,255,0.06)',
+              paddingTop: 10,
+            }}
+          >
+            <strong>Disclaimer:</strong> {result.disclaimer}
+          </p>
         </GC>
+        <OpenBlockersPanel />
       </div>
     );
   }
@@ -458,8 +536,33 @@ function ResultCard({ result }: { result: DiagnosticResult | NoPainResult }) {
         gap: 10,
       }}
     >
+      {r.banner ? (
+        <GC
+          style={{
+            padding: '14px 16px',
+            background: 'rgba(239,68,68,0.10)',
+            border: '2px solid rgba(239,68,68,0.55)',
+          }}
+        >
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 700,
+              color: '#ef4444',
+              textTransform: 'uppercase',
+              letterSpacing: '0.14em',
+              marginBottom: 6,
+            }}
+          >
+            🚨 {r.banner.tone === 'emergency' ? 'Emergency — seek care now' : 'Urgent'}
+          </div>
+          <div style={{ fontSize: 13, color: '#fecaca', lineHeight: 1.55, fontWeight: 600 }}>
+            {r.banner.text}
+          </div>
+        </GC>
+      ) : null}
       <GC v="glow" style={{ padding: 16 }}>
-        <Lbl>Diagnostic Results</Lbl>
+        <Lbl>Pain Risk Assessment</Lbl>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <GC style={{ padding: '12px 14px', border: `1px solid ${sevCol}33` }}>
             <div
@@ -632,6 +735,7 @@ function ResultCard({ result }: { result: DiagnosticResult | NoPainResult }) {
           <strong>Disclaimer:</strong> {r.disclaimer}
         </p>
       </GC>
+      <OpenBlockersPanel />
     </div>
   );
 }

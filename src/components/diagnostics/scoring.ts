@@ -1,241 +1,440 @@
 /**
- * Kriya Pain Diagnostics — Scoring Engine
- * Ported from App.jsx (scoreAll + severity).
- * Pure functions — no side effects. Input: PatientData. Output: scored conditions + severity bucket.
+ * Kriya CDE — Deterministic scoring engine (CDE v4.1, Parts IV/V/VI).
+ *
+ * Pure functions: same PatientData → same outputs, byte-for-byte
+ * (Part VIII reconstructability contract).
+ *
+ *   scoreAll(region, data)   — per-condition scoring + audit trace
+ *   computeSeverity(data)    — Part VI severity rules
+ *   computeConfidence(top3)  — gap-based confidence
+ *   regionFromPrimary(label) — Part III region triggers
+ *   applySafetyGates(...)    — 7 hard gates from Part VI
+ *
+ * Inviolable per Global Instructions:
+ *   - No fuzzy matching.  Every score = sum of literal Part V weights.
+ *   - No clinical judgment in extraction; this module IS the judgment layer.
+ *   - Standing caveat is part of every result envelope.
  */
 
 import { DB, FLAG_WEIGHT } from './conditions-db';
+import { OPTION_KEYS, labelToLetter, painScaleLetter } from './option-keys';
 import type {
-  ConditionsDB,
+  Condition,
+  Confidence,
+  ConditionWeights,
+  EngineOutput,
   PatientData,
+  QcCode,
   RegionKey,
+  RowLetter,
+  SafetyGateLog,
   ScoredCondition,
-  SeverityResult,
+  ScoringContribution,
   SeverityBucket,
+  SeverityResult,
 } from './types';
+import { ENGINE_VERSION, STANDING_CAVEAT } from './types';
 
-const lo = (s: string | undefined | null): string => (s ?? '').toLowerCase();
-
-/**
- * Map a free-text body region to a DB key.
- * 12 pain-region chips collapse into 4 canonical condition buckets.
- */
-export function mapRegion(region: string | undefined): RegionKey {
-  const l = lo(region);
-  if (l.includes('lower back') || l.includes('upper back') || l.includes('hip')) return 'back';
-  if (l.includes('neck')) return 'neck';
-  if (l.includes('shoulder') || l.includes('arm')) return 'shoulder';
-  if (l.includes('knee') || l.includes('leg') || l.includes('thigh') || l.includes('ankle')) return 'knee';
+// Region triggers (Part III)
+//   Back     ← F (Lower back), G (Hips), H (Thigh above knee)
+//   Neck     ← A (Neck),  E (Upper back)
+//   Shoulder ← B (Shoulder), C (Arm above elbow), D (Arm below elbow)
+//   Knee     ← I (Leg below knee), J (Ankle)   [H also valid for knee but Back wins by default]
+export function regionFromPrimary(label: string | undefined): RegionKey | null {
+  const letter = labelToLetter('L030201', label);
+  if (!letter) return null;
+  if (letter === 'L') return null;
+  if (letter === 'F' || letter === 'G' || letter === 'H') return 'back';
+  if (letter === 'A' || letter === 'E') return 'neck';
+  if (letter === 'B' || letter === 'C' || letter === 'D') return 'shoulder';
+  if (letter === 'I' || letter === 'J') return 'knee';
   return 'back';
 }
 
-/**
- * Score every condition in the region against the patient data,
- * then sort by score descending (flag weight breaks ties).
- */
-export function scoreAll(region: RegionKey, d: PatientData): ScoredCondition[] {
-  const db: ConditionsDB = DB;
-  return (db[region] ?? [])
-    .map((c) => {
-      let s = 0;
-
-      // Feeling (constant / intermittent) — +2
-      const feeling = lo(d.L030601).includes('constant')
-        ? 'constant'
-        : lo(d.L030601).includes('intermittent')
-        ? 'intermittent'
-        : '';
-      if (feeling && c.feel.includes(feeling)) s += 2;
-
-      // Aggravating activity — +1.5 per fuzzy match (capped at 8 pre-cap)
-      const uAgg = lo(d.L190201);
-      (c.agg ?? []).forEach((a) => {
-        const aLo = lo(a);
-        if (uAgg && (uAgg.includes(aLo) || aLo.includes(uAgg.split(' ')[0] ?? ''))) s += 1.5;
-      });
-      s = Math.min(s, 8);
-
-      // Relieving activity — +1.5 per fuzzy match
-      const uRel = lo(d.L210101);
-      (c.rel ?? []).forEach((r) => {
-        const rLo = lo(r);
-        if (uRel && (uRel.includes(rLo) || rLo.includes(uRel.split(' ')[0] ?? ''))) s += 1.5;
-      });
-
-      // Duration — +2
-      const durMap: Record<string, 'acute' | 'chronic'> = {
-        'Since last 7 days': 'acute',
-        'Since last 3 months': 'chronic',
-        'For more than 3 months': 'chronic',
-      };
-      const durKey = d.L150101 ? durMap[d.L150101] : undefined;
-      // Conditions marked dur:'either' match both acute and chronic windows.
-      // Without this, disc bulge / herniation and other multi-window
-      // conditions silently fail the duration check (Finding #4).
-      if (durKey && (c.dur.includes(durKey) || c.dur.includes('either'))) s += 2;
-
-      // Status / trend
-      // "worsening" exact match → +2.
-      // "progressive" / "worse" synonym → +1 (partial credit) so the
-      // Worsening bonus is not a de-facto red-flag-only bonus (see
-      // Finding #3 in the clinical audit).
-      if (d.L030901 === 'Worsening') {
-        if (c.status.includes('worsening')) s += 2;
-        else if (c.status.includes('progressive') || c.status.includes('worse')) s += 1;
-      }
-      if (d.L030901 === 'Much better than before' && c.status.includes('improving')) s += 1.5;
-      if (d.L030901 === 'Same as before' && c.status.includes('same')) s += 1;
-
-      // Neuro — +3 affected match, +1 wnl match
-      const sym = d.L030801 ?? [];
-      const hasNeuro = sym.some(
-        (x) => x.includes('Tingling') || x.includes('Weakness') || x.includes('balance'),
-      );
-      if (hasNeuro && c.neuro === 'affected') s += 3;
-      if (!hasNeuro && c.neuro === 'wnl') s += 1;
-
-      // Features — fuzzy match across several multi-select fields.
-      //
-      // Only forward match: the user's text must CONTAIN the condition's
-      // feature phrase. The previous reverse check `fLo.includes(uf.substring(0, 6))`
-      // caused a clinically unsafe false positive: any user selecting any
-      // "History of X" medical condition produced the 6-char prefix "histor",
-      // which is a substring of "history of cancer" (a feature on Cancer /
-      // Malignancy and Shoulder Fracture) — effectively flagging cancer for
-      // anyone with a neurological-condition or TB history.
-      const allFeats = [
-        ...(d.L031001 ?? []),
-        ...(d.L170101 ?? []),
-        ...(d.L170201 ?? []),
-        ...(d.L030801 ?? []),
-      ].map(lo);
-      let featMatchCount = 0;
-      (c.feat ?? []).forEach((f) => {
-        const fLo = lo(f);
-        if (allFeats.some((uf) => uf.includes(fLo))) {
-          s += 1.5;
-          featMatchCount += 1;
-        }
-      });
-
-      // Age
-      const age = parseInt(d.L010301 ?? '', 10) || 0;
-      if (c.age?.includes('>55') && age > 55) s += 1.5;
-      if (c.age?.includes('>50') && age > 50) s += 1.5;
-      if (c.age?.includes('>60') && age > 60) s += 1.5;
-      if (c.age?.includes('<30') && age < 30) s += 1.5;
-      if (c.age?.includes('<18') && age < 18) s += 1.5;
-      if (c.age?.includes('20-25') && age >= 18 && age <= 30) s += 1;
-      if (c.age?.includes('30-45') && age >= 30 && age <= 45) s += 1;
-      if (c.age?.includes('13-25') && age >= 13 && age <= 25) s += 1;
-
-      // Gender
-      if (c.gender !== 'both' && d.L010401) {
-        if (c.gender === 'F>M' && d.L010401 === 'Female') s += 1;
-        if (c.gender === 'M>F' && d.L010401 === 'Male') s += 1;
-        if (c.gender === 'female' && d.L010401 === 'Female') s += 2;
-      }
-
-      // BMI
-      const bmi = d.bmi ?? 0;
-      if (bmi >= 30) s += 0.5;
-      if (bmi >= 35 && c.flag !== 'green') s += 1;
-
-      // Severe pain + red flag
-      if ((d.L030501 ?? 5) >= 8 && c.flag === 'red') s += 2;
-
-      // Relapse + chronic
-      if (d.L150102 === 'Yes' && c.dur.includes('chronic')) s += 1;
-
-      // Post-surgical gating — a post-surgical condition MUST require
-      // a prior relevant surgery. Its generic features (numbness,
-      // tingling, burning) are shared with every neuro-positive
-      // presentation and otherwise cause the condition to surface for
-      // anyone with radicular symptoms — even those who explicitly
-      // selected "No surgeries". Only the "failed surgery" feat is
-      // specific. If the user has not reported a relevant prior
-      // surgery, zero the score. Surgery options that qualify for
-      // back/neck: "Spine surgery". (Other surgery types map to their
-      // anatomical regions, but conditions-db only has
-      // Post-Surgical Back Pain / Neck Pain today.)
-      if (c.name.startsWith('Post-Surgical')) {
-        const surgery = d.L170301;
-        const noRelevantSurgery =
-          !surgery || surgery === 'No surgeries';
-        if (noRelevantSurgery) {
-          s = 0;
-        }
-      }
-
-      // Red-flag gating — clinical safety guard.
-      //
-      // A red-flag diagnosis (Cancer/Malignancy, Cauda Equina, Fracture,
-      // Infection) must NEVER surface on non-specific signals alone
-      // (constant pain + worsening trend + chronic duration + severe scale
-      // + neuro symptoms can otherwise reach 11+ points on every red flag
-      // regardless of the user's actual condition history).
-      //
-      // If the user has matched ZERO specific features of a red-flag
-      // condition (no "history of cancer", no "night pain", no
-      // "unexplained weight loss", no "post-traumatic", no "urine control
-      // loss", etc.), we cap its score so it cannot outrank legitimate
-      // green/yellow conditions driven by specific matches. A red flag
-      // that DOES have ≥1 specific feature match is left unchanged and
-      // will still surface (and still wins the FLAG_WEIGHT tie-break).
-      if (c.flag === 'red' && featMatchCount === 0) {
-        s = Math.min(s, 2.5);
-      }
-
-      return {
-        name: c.name,
-        score: Math.round(s * 10) / 10,
-        flag: c.flag,
-      };
-    })
-    .sort((a, b) =>
-      b.score !== a.score ? b.score - a.score : (FLAG_WEIGHT[b.flag] ?? 0) - (FLAG_WEIGHT[a.flag] ?? 0),
-    );
+// PatientData → {QC → row letters[]}
+export function materialise(d: PatientData): Partial<Record<QcCode, RowLetter[]>> {
+  const out: Partial<Record<QcCode, RowLetter[]>> = {};
+  function add(qc: QcCode, letter: RowLetter | null): void {
+    if (!letter) return;
+    const arr = (out[qc] ??= []);
+    if (!arr.includes(letter)) arr.push(letter);
+  }
+  function addLabel(qc: QcCode, label: string | undefined): void {
+    add(qc, labelToLetter(qc, label));
+  }
+  function addLabels(qc: QcCode, labels: string[] | undefined): void {
+    (labels ?? []).forEach((l) => add(qc, labelToLetter(qc, l)));
+  }
+  addLabel('L010401', d.L010401);
+  if (d.L010301_band) add('L010301', d.L010301_band);
+  if (d.L010501_band) add('L010501', d.L010501_band);
+  if (d.L010601_band) add('L010601', d.L010601_band);
+  addLabel('L010701', d.L010701);
+  addLabel('L030101', d.L030101);
+  addLabel('L030201', d.L030201);
+  addLabel('L030201b', d.L030201b);
+  addLabel('L030401', d.L030401);
+  add('L030501', painScaleLetter(d.L030501));
+  addLabel('L030601', d.L030601);
+  addLabel('L030701', d.L030701);
+  addLabels('L030801', d.L030801);
+  addLabel('L030901', d.L030901);
+  addLabels('L031001', d.L031001);
+  addLabel('L031002', d.L031002);
+  addLabel('L031003', d.L031003);
+  addLabel('L031004', d.L031004);
+  addLabel('L031005', d.L031005);
+  addLabel('L031006', d.L031006);
+  addLabel('L031007', d.L031007);
+  addLabel('L031008', d.L031008);
+  addLabel('L031009', d.L031009);
+  addLabel('L031010', d.L031010);
+  addLabel('L031011', d.L031011);
+  addLabel('L150101', d.L150101);
+  addLabel('L150102', d.L150102);
+  addLabels('L170101', d.L170101);
+  addLabels('L170201', d.L170201);
+  addLabel('L170301', d.L170301);
+  addLabel('L170302', d.L170302);
+  addLabel('L190101', d.L190101);
+  addLabel('L190201', d.L190201);
+  addLabel('L190202', d.L190202);
+  addLabel('L210101', d.L210101);
+  addLabel('L210102', d.L210102);
+  addLabel('L230101', d.L230101);
+  addLabel('L230102', d.L230102);
+  return out;
 }
 
-/**
- * Compute severity bucket from pain scale, description, and neuro/bowel flags.
- * Returns total points + bucket label.
- */
-export function severity(d: PatientData): SeverityResult {
-  let t = 0;
+// Score one condition against materialised answers — sum literal Part V weights.
+export function scoreCondition(
+  cond: Condition,
+  answers: Partial<Record<QcCode, RowLetter[]>>,
+): ScoredCondition {
+  let total = 0;
+  const trace: ScoringContribution[] = [];
+  const qcsHit = new Set<QcCode>();
+  (Object.keys(answers) as QcCode[]).forEach((qc) => {
+    const rowsTable = (cond.weights as ConditionWeights)[qc];
+    if (!rowsTable) return;
+    (answers[qc] ?? []).forEach((letter) => {
+      const w = rowsTable[letter] ?? 0;
+      if (w !== 0) {
+        total += w;
+        trace.push({ qc, row: letter, weight: w });
+        qcsHit.add(qc);
+      }
+    });
+  });
+  return {
+    name: cond.name,
+    flag: cond.flag,
+    score: total,
+    trace,
+    distinctQcMatches: qcsHit.size,
+  };
+}
 
-  const ps = d.L030501 ?? 5;
-  t += ps <= 3 ? 1 : ps <= 6 ? 2 : ps <= 8 ? 3 : 4;
+export function scoreRegion(
+  region: RegionKey,
+  answers: Partial<Record<QcCode, RowLetter[]>>,
+): ScoredCondition[] {
+  return DB[region]
+    .map((c) => scoreCondition(c, answers))
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return FLAG_WEIGHT[b.flag] - FLAG_WEIGHT[a.flag];
+    });
+}
 
-  const desc = d.L030401 ?? '';
-  if (desc.includes('Crippling')) t += 5;
-  else if (desc.includes('Severe')) t += 3;
-  else if (desc.includes('Moderate')) t += 2;
-  else if (desc.includes('comes and goes')) t += 1.5;
-  else t += 1;
+// Severity (Part VI)
+const PAIN_BAND_POINTS = (scale: number): number => {
+  if (scale >= 1 && scale <= 3) return 1;
+  if (scale >= 4 && scale <= 6) return 2;
+  if (scale >= 7 && scale <= 8) return 3;
+  if (scale >= 9 && scale <= 10) return 4;
+  return 0;
+};
 
-  const sym = d.L030801 ?? [];
-  if (sym.some((x) => x.includes('Tingling'))) t += 2;
-  if (sym.some((x) => x.includes('Weakness'))) t += 3;
-  if (sym.some((x) => x.includes('bowel'))) t += 4;
-
+export function computeSeverity(d: PatientData): SeverityResult {
+  let total = 0;
+  const contributors: { input: string; points: number }[] = [];
+  const push = (input: string, points: number): void => {
+    if (!points) return;
+    total += points;
+    contributors.push({ input, points });
+  };
+  if (typeof d.L030501 === 'number') {
+    push('L030501 pain scale ' + d.L030501, PAIN_BAND_POINTS(d.L030501));
+  }
+  const descLetter = labelToLetter('L030401', d.L030401);
+  if (descLetter === 'D' || descLetter === 'E') {
+    push('L030401 row ' + descLetter + ' (severe/crippling pain)', 2);
+  }
+  const symLetters = new Set<RowLetter>();
+  (d.L030801 ?? []).forEach((s) => {
+    const l = labelToLetter('L030801', s);
+    if (l) symLetters.add(l);
+  });
+  if (symLetters.has('B')) push('L030801 row B (tingling / numbness)', 2);
+  if (symLetters.has('C')) push('L030801 row C (weakness)', 3);
+  if (symLetters.has('D')) push('L030801 row D (bowel/bladder/sexual dysfunction)', 4);
+  if (labelToLetter('L031008', d.L031008) === 'A') {
+    push('L031008 row A (night pain forces out of bed)', 2);
+  }
+  if (labelToLetter('L031009', d.L031009) === 'C') {
+    push('L031009 row C (fever > 101F)', 2);
+  }
   let bucket: SeverityBucket;
-  if (t <= 3) bucket = 'Mild';
-  else if (t <= 6) bucket = 'Moderate';
-  else if (t <= 9) bucket = 'Severe';
+  if (total <= 3) bucket = 'Mild';
+  else if (total <= 6) bucket = 'Moderate';
+  else if (total <= 9) bucket = 'Severe';
   else bucket = 'Emergency';
-
-  return { total: t, bucket };
+  return { total, bucket, contributors };
 }
 
+export function computeConfidence(top: ScoredCondition[]): Confidence {
+  if (top.length < 2) return 'Low';
+  const gap = top[0].score - top[1].score;
+  if (gap >= 4) return 'High';
+  if (gap >= 2) return 'Moderate';
+  return 'Low';
+}
+
+const BUCKET_RANK: Record<SeverityBucket, number> = {
+  Mild: 0,
+  Moderate: 1,
+  Severe: 2,
+  Emergency: 3,
+};
+function bucketAtLeast(b: SeverityBucket, min: SeverityBucket): SeverityBucket {
+  return BUCKET_RANK[b] >= BUCKET_RANK[min] ? b : min;
+}
+
+export interface GateInput {
+  region: RegionKey | null;
+  scored: ScoredCondition[];
+  severity: SeverityResult;
+  confidence: Confidence;
+  data: PatientData;
+  answers: Partial<Record<QcCode, RowLetter[]>>;
+}
+
+export interface GateOutput {
+  scored: ScoredCondition[];
+  severity: SeverityResult;
+  confidence: Confidence;
+  banner?: { tone: 'emergency' | 'urgent'; text: string };
+  gates: SafetyGateLog;
+}
+
+// Apply 7 safety gates from spec Part VI in deterministic order.
+export function applySafetyGates(input: GateInput): GateOutput {
+  const gates: SafetyGateLog = {
+    noPainShortCircuit: false,
+    caudaEquinaForced: false,
+    bowelBladderFloor: false,
+    redFlagGated: [],
+    postSurgicalBoosted: null,
+    pregnancyGate: false,
+    feverBackInfectionForced: false,
+    contradictionEscalated: false,
+  };
+  let { scored, severity, confidence } = input;
+  let banner: GateOutput['banner'];
+
+  const symLetters = new Set<RowLetter>();
+  (input.data.L030801 ?? []).forEach((s) => {
+    const l = labelToLetter('L030801', s);
+    if (l) symLetters.add(l);
+  });
+
+  // Gate 2: Cauda equina heuristic — weakness (C) AND bowel/bladder (D) → force Emergency.
+  if (symLetters.has('C') && symLetters.has('D')) {
+    gates.caudaEquinaForced = true;
+    severity = { ...severity, bucket: 'Emergency', flooredBy: 'cauda equina heuristic' };
+    confidence = 'High';
+    banner = {
+      tone: 'emergency',
+      text:
+        'You have reported leg weakness AND loss of bowel/bladder/sexual control. ' +
+        'These can indicate a time-critical spinal emergency (cauda equina). ' +
+        'Please seek emergency medical care immediately — do not delay.',
+    };
+  }
+
+  // Gate 3: Bowel/bladder severity floor (Severe minimum if D selected).
+  if (symLetters.has('D') && BUCKET_RANK[severity.bucket] < BUCKET_RANK.Severe) {
+    severity = {
+      ...severity,
+      bucket: bucketAtLeast(severity.bucket, 'Severe'),
+      flooredBy: severity.flooredBy ?? 'bowel/bladder floor',
+    };
+    gates.bowelBladderFloor = true;
+  }
+
+  // Gate 4: Red-flag feature gating.
+  if (scored.length > 0 && scored[0].flag === 'red') {
+    const nonRed = scored.filter((s) => s.flag !== 'red').slice(0, 2);
+    if (nonRed.length >= 1) {
+      const avgNext = nonRed.reduce((a, c) => a + c.score, 0) / nonRed.length;
+      const dominant = scored[0].score > avgNext + 3;
+      const enoughFeatures = scored[0].distinctQcMatches >= 2;
+      if (!dominant || !enoughFeatures) {
+        const cap = Math.max(0, nonRed[0].score - 0.1);
+        const suppressed = { ...scored[0], score: cap, gateApplied: 'red-flag gating' };
+        gates.redFlagGated.push(scored[0].name);
+        scored = [suppressed, ...scored.slice(1)].sort((a, b) => {
+          if (b.score !== a.score) return b.score - a.score;
+          return FLAG_WEIGHT[b.flag] - FLAG_WEIGHT[a.flag];
+        });
+      }
+    }
+  }
+
+  // Gate 5: Recent-surgery boost (+5 to matching Post-Surgical condition).
+  const surgeryLetter = labelToLetter('L170301', input.data.L170301);
+  const surgeryRecent = labelToLetter('L170302', input.data.L170302) === 'A';
+  if (surgeryLetter && surgeryLetter !== 'F' && surgeryRecent) {
+    const target = scored.find((c) => /post[- ]?surgical/i.test(c.name));
+    if (target) {
+      target.score += 5;
+      target.gateApplied = (target.gateApplied ? target.gateApplied + '; ' : '') + 'recent-surgery +5 boost';
+      gates.postSurgicalBoosted = target.name;
+    }
+  }
+
+  // Gate 6: Pregnancy gate (suppress spinal-manipulation suggestions in action text).
+  if (labelToLetter('L031002', input.data.L031002) === 'A') {
+    gates.pregnancyGate = true;
+  }
+
+  // Gate 7: Fever + back/neck pattern → force Infection top-3, raise to Severe.
+  if (
+    labelToLetter('L031009', input.data.L031009) === 'C' &&
+    (input.region === 'back' || input.region === 'neck')
+  ) {
+    const infectionName = input.region === 'back' ? 'Infection' : 'Infection – Herpes/ UTI/ TB/ Others';
+    const infIdx = scored.findIndex((c) => c.name === infectionName);
+    if (infIdx >= 0) {
+      const inf = scored[infIdx];
+      if (infIdx >= 3) {
+        scored.splice(infIdx, 1);
+        scored.splice(2, 0, { ...inf, gateApplied: 'fever+back/neck → infection forced top-3' });
+      } else {
+        inf.gateApplied = (inf.gateApplied ? inf.gateApplied + '; ' : '') + 'fever+back/neck → infection forced top-3';
+      }
+      gates.feverBackInfectionForced = true;
+    }
+    severity = {
+      ...severity,
+      bucket: bucketAtLeast(severity.bucket, 'Severe'),
+      flooredBy: severity.flooredBy ?? 'fever+back/neck infection pattern',
+    };
+  }
+
+  // Gate 8: Contradiction escalator — wired by extract pipeline upstream.
+
+  scored = scored.slice().sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    return FLAG_WEIGHT[b.flag] - FLAG_WEIGHT[a.flag];
+  });
+
+  return { scored, severity, confidence, banner, gates };
+}
+
+function actionForBucket(b: SeverityBucket, pregnancy: boolean): string {
+  const preg = pregnancy
+    ? ' Note: pregnancy detected — please ensure any clinical advice considers pregnancy-safe options. Avoid spinal manipulation suggestions until cleared by your obstetrician.'
+    : '';
+  switch (b) {
+    case 'Mild':
+      return 'Self-management guidance is appropriate at this stage. Persistent or worsening symptoms should be reviewed by a qualified clinician.' + preg;
+    case 'Moderate':
+      return 'Clinician consultation is recommended within the next few days. A primary-care doctor or MSK physiotherapist would be the right starting point.' + preg;
+    case 'Severe':
+      return 'Prompt clinician consultation within 24-48 hours is recommended. If a neurological symptom (weakness, numbness, balance loss) was reported, please seek in-person assessment by a specialist.' + preg;
+    case 'Emergency':
+      return 'This is an urgent / emergency presentation. Please do not self-manage — seek immediate clinical review or emergency care.' + preg;
+  }
+}
+
+// Public entry point — runEngine
+export function runEngine(d: PatientData): EngineOutput {
+  if (labelToLetter('L030201', d.L030201) === 'L') {
+    return {
+      noPain: true,
+      action: 'You reported no pain. Routing you to the Kriya 360 wellness module so you can continue building strength, flexibility and balance proactively.',
+      disclaimer: STANDING_CAVEAT,
+      engineVersion: ENGINE_VERSION,
+    };
+  }
+  const region = regionFromPrimary(d.L030201);
+  if (!region) {
+    return {
+      noPain: true,
+      action: 'We could not identify a primary pain region from your responses. Please revisit the region question so we can complete the risk assessment.',
+      disclaimer: STANDING_CAVEAT,
+      engineVersion: ENGINE_VERSION,
+    };
+  }
+  const answers = materialise(d);
+  const scoredRaw = scoreRegion(region, answers);
+  const severityRaw = computeSeverity(d);
+  const confidenceRaw = computeConfidence(scoredRaw);
+  const gated = applySafetyGates({
+    region,
+    scored: scoredRaw,
+    severity: severityRaw,
+    confidence: confidenceRaw,
+    data: d,
+    answers,
+  });
+  const top3 = gated.scored.slice(0, 3);
+  const scoresMap: Record<string, number> = {};
+  gated.scored.forEach((c) => {
+    scoresMap[c.name] = c.score;
+  });
+  return {
+    user: { age: d.L010301, gender: d.L010401, bmi: d.bmi },
+    pain: {
+      region: d.L030201,
+      duration: d.L150101,
+      scale: d.L030501,
+      description: d.L030401,
+      feeling: d.L030601,
+    },
+    severity: gated.severity,
+    scores: scoresMap,
+    top_3: top3,
+    confidence: gated.confidence,
+    action: actionForBucket(gated.severity.bucket, gated.gates.pregnancyGate),
+    banner: gated.banner,
+    disclaimer: STANDING_CAVEAT,
+    engineVersion: ENGINE_VERSION,
+    gates: gated.gates,
+  };
+}
+
+// Display helpers
 export function severityColor(b: SeverityBucket): string {
   return b === 'Emergency' ? '#ef4444' : b === 'Severe' ? '#f97316' : b === 'Moderate' ? '#f59e0b' : '#22c55e';
 }
-
 export function flagColor(f: 'red' | 'yellow' | 'green'): string {
   return f === 'red' ? '#ef4444' : f === 'yellow' ? '#f59e0b' : '#22c55e';
 }
-
 export function flagLabel(f: 'red' | 'yellow' | 'green'): string {
   return f === 'red' ? 'Red Flag' : f === 'yellow' ? 'Yellow Flag' : 'Green Flag';
+}
+
+// Legacy adapter — old callers (DiagnosticsChat, etc.)
+export function mapRegion(region: string | undefined): RegionKey {
+  return regionFromPrimary(region) ?? 'back';
+}
+export function scoreAll(region: RegionKey, d: PatientData): { name: string; score: number; flag: 'red' | 'yellow' | 'green' }[] {
+  const answers = materialise(d);
+  return scoreRegion(region, answers).map(({ name, score, flag }) => ({ name, score, flag }));
+}
+export function severity(d: PatientData): SeverityResult {
+  return computeSeverity(d);
 }

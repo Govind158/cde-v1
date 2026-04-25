@@ -28,7 +28,7 @@ import { ChatInput } from './ChatInput';
 import { MED_FOLLOWUPS, getNode } from './questionnaire';
 import type { QuestionNode } from './questionnaire';
 import { bmiInsight, findActivityInsight, heightInsight } from './insights';
-import { mapRegion, scoreAll, severity } from './scoring';
+import { runEngine as cdeRunEngine, computeSeverity, regionFromPrimary } from './scoring';
 import { DB } from './conditions-db';
 import type {
   ChatEntry,
@@ -99,7 +99,7 @@ export default function DiagnosticsChat() {
 
       // Node-specific pre-cards (severity monitor for certain nodes)
       if (['pain-description', 'symptoms', 'origination'].includes(node.id)) {
-        const sv = severity(data);
+        const sv = computeSeverity(data);
         if (sv.total > 0) {
           bubbles.push({ id: nextId(), role: 'bot', kind: 'severity', severity: sv });
         }
@@ -256,7 +256,7 @@ export default function DiagnosticsChat() {
 
       // Live severity after trend update and later points
       if (['pain-activity', 'trend'].includes(node.id)) {
-        const sv = severity(newData);
+        const sv = computeSeverity(newData);
         if (sv.total > 0) {
           sideEffects.push({ id: nextIdStr(), role: 'bot', kind: 'severity', severity: sv });
         }
@@ -627,14 +627,33 @@ export default function DiagnosticsChat() {
         // node, which may still be the current one.
         const skipToId = findNextUnansweredFrom(state.currentId, newData);
         if (skipToId === state.currentId) {
-          await emitBubbles([
-            {
+          // The earlier chips-question bubble (if any) is now scrolled up
+          // and the footer only renders the free-text bar for chips kinds —
+          // so the user has no visible options to tap. Re-emit a fresh
+          // chips-question bubble at the bottom of the transcript so the
+          // user can pick an answer. Same pattern for a non-chips node:
+          // remind them via text and keep the structured footer input.
+          const needText: ChatEntry = {
+            id: nextIdStr(),
+            role: 'bot',
+            kind: 'text',
+            text: `I still need an answer for this — please pick an option below.`,
+          };
+          const bubbles: ChatEntry[] = [needText];
+          if (
+            (currentNode.kind === 'chips-single' || currentNode.kind === 'chips-multi') &&
+            currentNode.options
+          ) {
+            bubbles.push({
               id: nextIdStr(),
               role: 'bot',
-              kind: 'text',
-              text: `I still need an answer for the question above — please pick an option.`,
-            },
-          ]);
+              kind: 'chips-question',
+              prompt: currentNode.prompt,
+              options: currentNode.options,
+              multi: currentNode.kind === 'chips-multi',
+            });
+          }
+          await emitBubbles(bubbles);
         } else {
           await advanceTo(skipToId, newData);
         }
@@ -700,7 +719,7 @@ export default function DiagnosticsChat() {
     ? state.activeFollowup ?? ''
     : node?.prompt;
 
-  const region = mapRegion(state.data.L030201);
+  const region = regionFromPrimary(state.data.L030201) ?? 'back';
   const regionCount = DB[region]?.length ?? 0;
 
   return (
@@ -928,56 +947,12 @@ function findNextUnansweredFrom(startId: string, data: PatientData): string {
   return 'processing';
 }
 
+/**
+ * Engine call — deterministic CDE v4.1 in scoring.ts owns all clinical
+ * reasoning (region triggers, scoring, severity, confidence, safety gates,
+ * standing caveat).  This wrapper exists only so the orchestrator's
+ * pre-existing call sites keep working.
+ */
 function runEngine(d: PatientData): EngineOutput {
-  // "No pain" path
-  if (d.L030201 === 'No pain') {
-    const out: NoPainResult = {
-      noPain: true,
-      action:
-        'Our pain algorithm is designed to assist care-seekers under pain. Since you are not having any pain, we encourage you to undertake an evaluation of your muscle health to check the Age of your Muscles.',
-    };
-    return out;
-  }
-
-  const region = mapRegion(d.L030201);
-  const sv = severity(d);
-  const scores = scoreAll(region, d);
-  const top3 = scores.slice(0, 3);
-
-  const diff = scores.length >= 2 && scores[0] && scores[1] ? scores[0].score - scores[1].score : 10;
-  const confidence: DiagnosticResult['confidence'] =
-    diff >= 4 ? 'High' : diff >= 2 ? 'Moderate' : 'Low';
-
-  const sMap: Record<string, number> = {};
-  scores.forEach((s) => {
-    sMap[s.name] = s.score;
-  });
-
-  const action =
-    sv.bucket === 'Emergency'
-      ? 'Immediate specialist consultation required. Consider emergency care.'
-      : sv.bucket === 'Severe'
-      ? 'Urgent specialist consultation recommended within 24-48 hours.'
-      : sv.bucket === 'Moderate'
-      ? 'Schedule specialist consultation within 1-2 weeks.'
-      : 'Consider physiotherapy or wellness assessment. Monitor symptoms.';
-
-  const out: DiagnosticResult = {
-    user: { age: d.L010301, gender: d.L010401, bmi: d.bmi },
-    pain: {
-      region: d.L030201,
-      duration: d.L150101,
-      scale: d.L030501,
-      description: d.L030401,
-      feeling: d.L030601,
-    },
-    severity: sv,
-    scores: sMap,
-    top_3: top3,
-    confidence,
-    action,
-    disclaimer:
-      'This is a probabilistic digital triage system and not a final medical diagnosis. Please consult a specialist for confirmation.',
-  };
-  return out;
+  return cdeRunEngine(d);
 }

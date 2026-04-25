@@ -1,48 +1,53 @@
 /**
- * Kriya Pain Diagnostics — Questionnaire Flow
+ * Kriya CDE — Questionnaire flow (CDE v4.1, Part II).
  *
- * Defines every question in the chat flow, in the same order as App.jsx (S0 → S13).
- * Each question is a node; the orchestrator walks them, emits bot messages,
- * asks the user for input, echoes the user's reply back as a user bubble,
- * then advances (with optional branching).
+ * The flow is the SINGLE source of truth for question order and branching.
+ * The orchestrator walks nodes; option labels here MUST match the canonical
+ * row labels in `option-keys.ts`.  Adding/renaming a chip requires updating
+ * `option-keys.ts` first, otherwise the answer maps to no row letter and
+ * scoring silently sees a zero — a clinical bug.
  *
- * Branching lives in `next(data)` — pure function on current patient state.
+ * v4.1 changes vs pre-v4.1:
+ *   - height-weight paired input split into separate `height` and `weight`
+ *     numeric nodes (per spec: open-ended numeric → LLM cohorts to band).
+ *     The pair will not break existing PatientData since legacy keys are
+ *     kept @deprecated; v4.1 reads L010501_band / L010601_band.
+ *   - L031001 follow-ups now stored under canonical L031002–L031011 keys
+ *     (was: legacy `FU_<condition>` strings).
+ *   - L031001 'High Grade Fever' renamed → 'High grade fever' to match spec.
+ *   - L170101 'Ankylosing Spondylitis' renamed → 'Ankylosing spondylitis'
+ *     (Annex B label fix).
+ *   - All branching rules per Annex A are preserved; surgery-recent now uses
+ *     'In the last 1 year' / 'Done before the previous year' (was Yes/No).
  */
 
-import type { PatientData } from './types';
+import type { PatientData, RowLetter } from './types';
 
 export type InputKind =
-  | 'chips-single'   // single selection from a fixed list
-  | 'chips-multi'    // multi selection, with "None" as an exclusive option
+  | 'chips-single'
+  | 'chips-multi'
   | 'text'
   | 'number'
-  | 'range'          // 1..10 slider
-  | 'height-weight'  // paired number inputs (height cm / weight kg) — sets both L-keys + derives bmi
-  | 'info'           // no input, auto-advance after delay
-  | 'processing'     // running the engine
-  | 'results';       // terminal
+  | 'range'
+  | 'height-weight'   // pre-v4.1 paired input (kept for back-compat)
+  | 'info'
+  | 'processing'
+  | 'results';
 
 export interface QuestionNode {
   id: string;
-  /** QC-coded key stored in patient data. Omit for `info`/`processing`/`results`. */
   field?: keyof PatientData | 'height' | 'weight';
-  /** Bot message sequence shown before the input appears. */
   intro: string[];
-  /** Follow-on prompt label on the input. */
   prompt?: string;
-  /** Input kind. */
   kind: InputKind;
-  /** Options for chips. */
   options?: string[];
-  /** Dynamic suggestions displayed after the user answers (emitted as additional bot bubbles). */
   postBubbles?: (data: PatientData) => { emoji: string; text: string; color: string }[];
-  /** Optional BMI/mini-diagnosis cards. */
   postCards?: (data: PatientData) => { kind: 'bmi' | 'mini-diagnosis' | 'severity' | 'red-flag'; payload: unknown }[];
-  /** Returns the next node id or `null` to stay (used by `processing`). */
   next: (data: PatientData) => string | null;
-  /** Validation: returns true if the current data satisfies this node. */
   canAdvance?: (data: PatientData) => boolean;
 }
+
+// ─── Canonical option lists (match option-keys.ts verbatim) ─────────────
 
 export const PAIN_REGIONS = [
   'Neck',
@@ -65,76 +70,94 @@ export const MED_OPTS = [
   'Active fractures',
   'History of cancer',
   'History of tuberculosis',
-  'Loss of Appetite or Unexplained Weight Loss',
-  'Severe Night Pain',
-  'High Grade Fever',
-  'Shortness of Breath',
-  'History of Neurological Condition',
+  'Loss of appetite / unexplained weight loss',
+  'Severe night pain',
+  'High grade fever',
+  'Shortness of breath',
+  'History of neurological condition',
   'None',
 ];
 
-export const MED_FOLLOWUPS: Record<string, { q: string; o: string[] }> = {
+/**
+ * Co-morbidity → (canonical follow-up QC code, question + options).
+ * Spec Annex A maps L031001 row A→L031002 ... J→L031011, K→no follow-up.
+ * Option labels are verbatim from spec Part II "Option-to-code key".
+ */
+export const MED_FOLLOWUPS: Record<
+  string,
+  { qcCode: keyof PatientData; q: string; o: string[] }
+> = {
   Pregnancy: {
+    qcCode: 'L031002',
     q: 'Current stage of pregnancy?',
     o: ['Currently pregnant', 'Child is younger than 1 year', 'Child is more than 1 year'],
   },
   'Recent surgery': {
-    q: 'Surgery timelines?',
-    o: ['Surgery was done in last year', 'Surgery was completed before last year'],
+    qcCode: 'L031003',
+    q: 'Surgery timeline?',
+    o: ['Surgery done in last year', 'Surgery completed before last year'],
   },
   'Active fractures': {
-    q: 'Is the active fracture in spine?',
-    o: ['Yes', 'No'],
+    qcCode: 'L031004',
+    q: 'Is the active fracture in the spine?',
+    o: ['Yes — fracture is in spine', 'No'],
   },
   'History of cancer': {
-    q: 'How long have you been suffering?',
+    qcCode: 'L031005',
+    q: 'How long have you had this condition?',
     o: ['For less than a year', 'For more than a year', 'Was suffering before but cured now'],
   },
   'History of tuberculosis': {
-    q: 'Duration?',
+    qcCode: 'L031006',
+    q: 'When was it detected?',
     o: ['Detected last year', 'Detected prior to last year', 'Was suffering before but cured now'],
   },
-  'Loss of Appetite or Unexplained Weight Loss': {
-    q: 'Weight lost in last 3-6 months?',
-    o: ['>8 kgs, not on any diet', '>8 kgs, due to diet/program', 'Weight loss of <7 kgs'],
+  'Loss of appetite / unexplained weight loss': {
+    qcCode: 'L031007',
+    q: 'How much weight have you lost in the last 3-6 months?',
+    o: ['>8 kg (no diet / weight loss regime)', '>8 kg (on specific diet / weight loss program)', 'Weight loss <7 kg'],
   },
-  'Severe Night Pain': {
-    q: 'Does pain force you to get out of bed?',
+  'Severe night pain': {
+    qcCode: 'L031008',
+    q: 'Does the pain force you to get out of bed?',
     o: ['Yes', 'No'],
   },
-  'High Grade Fever': {
-    q: 'Highest temperature?',
-    o: ['<98°F', '98-101°F', '>101°F'],
+  'High grade fever': {
+    qcCode: 'L031009',
+    q: 'What was your highest body temperature?',
+    o: ['<98° F', '98–101° F', '>101° F'],
   },
-  'Shortness of Breath': {
-    q: 'When do you encounter breathlessness?',
+  'Shortness of breath': {
+    qcCode: 'L031010',
+    q: 'When does the breathlessness occur?',
     o: ['While doing rigorous activities', 'Even while at rest'],
   },
-  'History of Neurological Condition': {
-    q: 'Current status?',
-    o: ['Just been a year but still mobile', 'Condition worsening and bed ridden'],
+  'History of neurological condition': {
+    qcCode: 'L031011',
+    q: 'What is the current status?',
+    o: ['Under 1 year; still mobile and able to move', 'Worsening; bed-ridden'],
   },
 };
 
-/**
- * Canonical flow. IDs are referenced by the orchestrator.
- *
- * S0 Welcome → S1 Demographics → S2 Lifestyle → S3 Region → (No pain? → Results)
- *   → S4 Pain Details → S5 Symptoms & Status → S6 Med History (+ dynamic FU)
- *   → S7 Health & History → S8 Origination
- *   → (aggravates? S9 Aggravation Duration : skip to S10)
- *   → S10 Relief → (reduces? S10b duration : skip) → S11 Past Treatment
- *   → S12 Processing → S13 Results
- */
+/** Helper: cohort raw age into the L010301 band letter A–F. */
+export function ageBandFromYears(years: number): RowLetter {
+  if (years <= 30) return 'A';
+  if (years <= 40) return 'B';
+  if (years <= 50) return 'C';
+  if (years <= 60) return 'D';
+  if (years <= 70) return 'E';
+  return 'F';
+}
+
 export const FLOW: QuestionNode[] = [
   {
     id: 'welcome',
     kind: 'info',
     intro: [
-      "Hi! I'm Kriya — your Pain Diagnostics assistant.",
-      'This journey takes ~12 minutes and ~15 questions to arrive at the final outcome.',
-      'Please ensure you are in a quiet, peaceful environment. Your responses act as critical evidence for the diagnostic outcome.',
-      "When you're ready, tap Begin below.",
+      "Hi! I'm Kriya — your Pain Risk Assessment assistant.",
+      'This is a structured risk-discovery tool, not a diagnostic tool. It will give you an indication of likely musculoskeletal patterns and what category of clinical attention may be warranted.',
+      'It takes about 12 minutes (15-25 questions). Your answers are critical, so please ensure you are in a quiet, peaceful environment.',
+      'When ready, tap Begin below.',
     ],
     next: () => 'gender',
   },
@@ -144,9 +167,7 @@ export const FLOW: QuestionNode[] = [
     id: 'gender',
     field: 'L010401',
     kind: 'chips-single',
-    intro: [
-      "Let's start with a short profile.",
-    ],
+    intro: ["Let's start with a short profile."],
     prompt: 'Gender',
     options: ['Male', 'Female', 'Transgender', 'Prefer not to say'],
     next: () => 'age',
@@ -156,20 +177,26 @@ export const FLOW: QuestionNode[] = [
     field: 'L010301',
     kind: 'number',
     intro: [
-      'We stopped tracking age after the dinosaurs left — but doctors say it\'s mandatory for curating a wellness profile 🦕',
-      'How old are you?',
+      'Age helps us cohort your assessment against MSK risk patterns observed in similar age bands.',
+      'How old are you (years)?',
     ],
     prompt: 'Age',
-    next: () => 'height-weight',
+    next: () => 'height',
   },
   {
-    id: 'height-weight',
-    kind: 'height-weight',
-    intro: [
-      'Certain pain patterns, muscle responses and recovery pathways vary based on age and gender — this helps curate your wellness profile.',
-      'How tall are you, and what do you weigh?',
-    ],
-    prompt: 'Height (cm) & Weight (kg)',
+    id: 'height',
+    field: 'L010501',
+    kind: 'number',
+    intro: ['How tall are you (in cm)?'],
+    prompt: 'Height (cm)',
+    next: () => 'weight',
+  },
+  {
+    id: 'weight',
+    field: 'L010601',
+    kind: 'number',
+    intro: ['And what do you weigh (in kg)?'],
+    prompt: 'Weight (kg)',
     next: () => 'occupation',
   },
 
@@ -178,10 +205,7 @@ export const FLOW: QuestionNode[] = [
     id: 'occupation',
     field: 'L010701',
     kind: 'chips-single',
-    intro: [
-      'Got it! Now a couple of quick questions about your daily life patterns.',
-      'Understanding your daily patterns helps us check for occupational hazards.',
-    ],
+    intro: ['Got it. Now a couple of quick questions about your daily life patterns.'],
     prompt: 'Occupation / Primary Activity',
     options: [
       'Sitting (desk, driving, office)',
@@ -213,7 +237,7 @@ export const FLOW: QuestionNode[] = [
         ? [{
             emoji: '⚠️',
             color: '#f59e0b',
-            text: 'No exercise significantly increases MSK risk. Even 15 minutes of daily walking can improve joint health and reduce pain episodes by up to 30%.',
+            text: 'No regular movement significantly increases MSK risk. Even 15 minutes of daily walking can improve joint health and reduce pain episodes by up to 30%.',
           }]
         : [],
     next: () => 'region',
@@ -233,9 +257,8 @@ export const FLOW: QuestionNode[] = [
     id: 'region-secondary',
     field: 'L030201b',
     kind: 'chips-single',
-    intro: ['Any secondary area of pain? (optional — or pick "skip")'],
+    intro: ['Any secondary area of pain? (optional — pick "Skip" if none)'],
     prompt: 'Secondary area of pain',
-    // "skip" is appended by the orchestrator dynamically — rendered as the last chip.
     options: [...PAIN_REGIONS.filter((r) => r !== 'No pain'), 'Skip'],
     next: () => 'pain-description',
   },
@@ -245,7 +268,7 @@ export const FLOW: QuestionNode[] = [
     id: 'pain-description',
     field: 'L030401',
     kind: 'chips-single',
-    intro: ['In other words, if pain had a personality, how would you describe it?'],
+    intro: ['If pain had a personality, how would you describe it?'],
     prompt: 'Describe your pain',
     options: [
       'Mild pain that bothers occasionally',
@@ -321,7 +344,7 @@ export const FLOW: QuestionNode[] = [
         ? [{
             emoji: '🎉',
             color: '#22c55e',
-            text: "That's a great positive indicator! Pain improving suggests your body's natural healing mechanisms are working well.",
+            text: "That's a positive indicator. Improving pain often means your body's natural healing is on track.",
           }]
         : [],
     next: () => 'medical-conditions',
@@ -332,13 +355,9 @@ export const FLOW: QuestionNode[] = [
     id: 'medical-conditions',
     field: 'L031001',
     kind: 'chips-multi',
-    intro: [
-      "A bit of medical history now. We'd ideally want you to mark none — but just in case.",
-    ],
+    intro: ['A bit of medical history. Mark all that apply (or None).'],
     prompt: 'Detected medical conditions',
     options: MED_OPTS,
-    // Follow-up questions for each flagged condition are generated dynamically
-    // by the orchestrator (see DiagnosticsChat.tsx), inserted before advancing.
     next: () => 'duration',
   },
 
@@ -348,7 +367,7 @@ export const FLOW: QuestionNode[] = [
     field: 'L150101',
     kind: 'chips-single',
     intro: [
-      'A preliminary report is almost ready! A few more details will sharpen the diagnostic accuracy.',
+      'A few more details to sharpen the assessment.',
       'How long have you had this pain?',
     ],
     prompt: 'Pain duration',
@@ -358,7 +377,7 @@ export const FLOW: QuestionNode[] = [
         ? [{
             emoji: '⏳',
             color: '#f97316',
-            text: 'Chronic pain (>3 months) activates degenerative, structural and inflammatory condition scoring pathways — a key differentiator.',
+            text: 'Chronic pain (>3 months) activates degenerative, structural and inflammatory pattern scoring — a key differentiator.',
           }]
         : [],
     next: () => 'relapse',
@@ -381,14 +400,14 @@ export const FLOW: QuestionNode[] = [
     options: [
       'Diabetes',
       'Thyroid',
-      'Hypertension / BP / Stroke',
+      'Hypertension / blood pressure / stroke',
       'Arthritis',
-      'Osteopenia / Osteoporosis',
-      'Prostrate / Gynaecological issues',
-      'Cardiac / Heart conditions',
-      'Neurological (Parkinsons/Stroke)',
-      'Severe Asthma',
-      'Ankylosing Spondylitis',
+      'Osteopenia or osteoporosis',
+      'Prostate or gynaecological issues',
+      'Cardiac or heart conditions',
+      "Neurological conditions (Parkinson's / stroke)",
+      'Severe asthma',
+      'Ankylosing spondylitis',
       'None of the above',
     ],
     next: () => 'deficiencies',
@@ -403,8 +422,8 @@ export const FLOW: QuestionNode[] = [
       'Vitamin D3',
       'Vitamin B12',
       'Calcium',
-      'Hemoglobin / Iron',
-      'Not yet tested / No deficiencies',
+      'Haemoglobin / iron',
+      'Not yet tested / no deficiencies',
     ],
     next: () => 'surgery',
   },
@@ -417,36 +436,36 @@ export const FLOW: QuestionNode[] = [
     options: [
       'Spine surgery',
       'Cardiac surgery',
-      'Gynaec / Hernia',
+      'Gynaec surgery or hernia',
       'Joint replacements',
       'Other surgeries',
-      'No surgeries',
+      'No surgeries reported',
     ],
-    next: (d) => (d.L170301 && d.L170301 !== 'No surgeries' ? 'surgery-recent' : 'origination'),
+    next: (d) => (d.L170301 && d.L170301 !== 'No surgeries reported' ? 'surgery-recent' : 'origination'),
   },
   {
     id: 'surgery-recent',
     field: 'L170302',
     kind: 'chips-single',
-    intro: ['Was the surgery recent?'],
-    prompt: 'Recent surgery',
-    options: ['Yes', 'No'],
+    intro: ['When was the surgery?'],
+    prompt: 'Surgery timing',
+    options: ['In the last 1 year', 'Done before the previous year'],
     next: () => 'origination',
   },
 
-  // ── S8 Last Lap — Origination ──
+  // ── S8 Origination ──
   {
     id: 'origination',
     field: 'L190101',
     kind: 'chips-single',
-    intro: ['The last lap 🏁 — these pinpoint the root cause.', 'How did the pain first start?'],
+    intro: ['The last lap. These pinpoint the root cause.', 'How did the pain first start?'],
     prompt: 'First incidence of pain',
     options: [
-      'Sudden injury or accident (fall, sports, lifting)',
-      'Gradual onset (developed slowly, no clear cause)',
+      'Sudden injury / accident (fall / sports / lifting)',
+      'Gradual onset (no clear cause)',
       'After surgery or medical procedure',
-      'Postural strain or overuse (long sitting, repetitive activity, travelling)',
-      'Unknown cause — not sure how it started',
+      'Postural strain / overuse (long sitting / repetitive / travel)',
+      'Unknown cause',
     ],
     next: () => 'aggravator',
   },
@@ -454,39 +473,34 @@ export const FLOW: QuestionNode[] = [
     id: 'aggravator',
     field: 'L190201',
     kind: 'chips-single',
-    intro: ['And what activity increases the pain most?'],
+    intro: ['What activity increases the pain most?'],
     prompt: 'Aggravating activity',
     options: [
-      'Daily activities (household, dressing, cooking)',
-      'During mobility (walking, standing, climbing stairs)',
-      'Sitting / Desk work (prolonged sitting, driving)',
-      'Bending / Lifting (picking objects, twisting, carrying)',
-      'Exercise / Sports (running, gym, recreational)',
+      'Daily activities (household / dressing / cooking)',
+      'Mobility (walking / standing / climbing stairs)',
+      'Sitting / desk work (prolonged sitting / computer / driving)',
+      'Bending / lifting (picking / twisting / carrying heavy items)',
+      'Exercise or sports (running / gym / recreational)',
       "Pain doesn't aggravate",
     ],
     next: (d) => {
-      // Only ask aggravation-duration when the user said the pain DOES aggravate.
-      // If L190201 is missing OR matches the "doesn't aggravate" option, skip straight to relief.
       const v = d.L190201;
-      if (!v || v === "Pain doesn't aggravate" || v.toLowerCase().includes("doesn't")) return 'relief';
+      if (!v || v === "Pain doesn't aggravate") return 'relief';
       return 'aggravation-duration';
     },
   },
-
-  // ── S9 Aggravation Duration ──
   {
     id: 'aggravation-duration',
     field: 'L190202',
     kind: 'chips-single',
     intro: [
-      "To understand your pain better, we'd like to know how long your pain tends to feel worse once it's triggered. This helps us figure out how your muscles and nerves are reacting.",
-      'For example, if your pain worsens after walking or sitting, does it settle in a few minutes? Or does it stay for hours?',
-      "There's no right or wrong — just tell us what feels closest to your experience.",
+      'Once the pain is triggered, how long does it tend to feel worse?',
+      'For example, if it worsens after walking or sitting — does it settle in a few minutes, or does it stay for hours?',
     ],
     prompt: 'Duration after which pain aggravates',
     options: [
       'Immediately (within 10 minutes)',
-      'After a few minutes (10-30 minutes)',
+      'After a few minutes (within 10–30 minutes)',
       'After a while (after 30 minutes)',
     ],
     next: () => 'relief',
@@ -497,18 +511,18 @@ export const FLOW: QuestionNode[] = [
     id: 'relief',
     field: 'L210101',
     kind: 'chips-single',
-    intro: ['If there is anything that reduces the pain, that may also help tailor a faster recovery plan.'],
+    intro: ['If anything reduces the pain, that helps tailor a recovery plan.'],
     prompt: 'What activity reduces pain?',
     options: [
-      'External factors (balms, hot/ice packs, analgesics)',
-      'While sitting on a chair or couch or floor',
-      'While standing',
-      'While walking',
-      'While sleeping or resting',
-      'While bending or stooping',
-      'While lifting weights',
-      'While exercising or working out',
-      'While turning in bed or rising from chair',
+      'External factors (balms / hot / ice / analgesics)',
+      'Sitting (on chair / couch / floor)',
+      'Standing',
+      'Walking',
+      'Sleeping / resting',
+      'Bending / stooping',
+      'Lifting weights',
+      'Exercises / working out',
+      'Turning in bed / rising from chair',
       "Pain doesn't reduce",
     ],
     next: (d) => (d.L210101 && d.L210101 !== "Pain doesn't reduce" ? 'relief-duration' : 'past-treatment'),
@@ -517,14 +531,11 @@ export const FLOW: QuestionNode[] = [
     id: 'relief-duration',
     field: 'L210102',
     kind: 'chips-single',
-    intro: [
-      "We're mapping your body's recovery rhythm. This will help suggest the right pace of care and find what helps you heal fastest.",
-      'How long before the pain starts to reduce?',
-    ],
+    intro: ['How long before the pain starts to reduce?'],
     prompt: 'Relief timing',
     options: [
       'Immediately (within 10 minutes)',
-      'After a few minutes (10-30 minutes)',
+      'After a few minutes (within 10–30 minutes)',
       'After a while (after 30 minutes)',
     ],
     next: () => 'past-treatment',
@@ -535,19 +546,19 @@ export const FLOW: QuestionNode[] = [
     id: 'past-treatment',
     field: 'L230101',
     kind: 'chips-single',
-    intro: ["A last few questions to check if any previous treatment was done."],
+    intro: ['A few last questions about previous treatment.'],
     prompt: 'Any past treatment?',
     options: [
-      'Applied pain relief gel/balm/spray',
-      'Taken medications under specialist supervision',
-      'Taken physiotherapy/TENS/IFT/traction',
-      'Done home exercises from online videos',
-      'Simply took bed rest',
-      'Underwent ayurveda treatment',
-      'Not undertaken any treatment',
+      'Pain relief gel / balm / spray / analgesics',
+      'Medications under specialist supervision',
+      'Physiotherapy / TENS / IFT / traction',
+      'Home exercises from online videos',
+      'Bed rest only (no medicine / rehab)',
+      'Ayurveda treatment',
+      'Not undertaken any medication or treatment',
     ],
     next: (d) =>
-      d.L230101 && d.L230101 !== 'Not undertaken any treatment' ? 'past-treatment-outcome' : 'processing',
+      d.L230101 && d.L230101 !== 'Not undertaken any medication or treatment' ? 'past-treatment-outcome' : 'processing',
   },
   {
     id: 'past-treatment-outcome',
@@ -556,11 +567,11 @@ export const FLOW: QuestionNode[] = [
     intro: ['Did the treatment help?'],
     prompt: 'Treatment outcome',
     options: [
-      'Yes completely, but pain relapsed',
+      'Yes, completely — but pain relapsed',
       'Partial reduction in pain',
-      'Yes but slight pain remains',
+      'Yes, but slight pain is still there',
       'No, it did not help at all',
-      'No, pain increased or worsened further',
+      'No — rather the pain worsened',
     ],
     next: () => 'processing',
   },
@@ -569,7 +580,7 @@ export const FLOW: QuestionNode[] = [
   {
     id: 'processing',
     kind: 'processing',
-    intro: ['Designing your care plan… Running diagnostic engine across all candidate conditions.'],
+    intro: ['Running the deterministic risk engine across all candidate conditions in your region pool…'],
     next: () => 'results',
   },
 

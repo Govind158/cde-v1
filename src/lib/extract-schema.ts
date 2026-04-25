@@ -1,31 +1,22 @@
 /**
- * Kriya Pain Diagnostics — Extraction Schema
+ * Kriya CDE — Extraction Schema (CDE v4.1).
  *
- * Describes the fields the LLM may fill in a single extraction call.
- * Used both by:
- *   - the server API route to build the prompt + JSON schema for OpenAI
- *   - the client to type-check the response and render the confirmation card
- *
- * IMPORTANT: option lists here MUST match `questionnaire.ts` exactly.
- * The extractor snaps the LLM output to one of these literal strings.
+ * Mirrors questionnaire.ts option lists EXACTLY.  The extractor snaps the
+ * LLM output to one of these literal strings; anything else is dropped or
+ * flagged as a qualitative observation (Part I.2 mandate 3).
  */
 
 import type { PatientData } from '@/components/diagnostics/types';
 
 export interface ExtractField {
-  /** PatientData key (or 'height'/'weight'). */
   key: keyof PatientData | 'height' | 'weight';
-  /** Human label the bot uses in its confirmation bubble. */
   label: string;
-  /** For enumerated fields, the only valid string values. */
   enum?: string[];
-  /** Field kind — controls how the extractor validates and renders the value. */
   kind: 'enum' | 'enum-multi' | 'number' | 'range-1-10' | 'text';
-  /** Prompt hint for the LLM. */
   hint?: string;
 }
 
-// ─── Option lists — mirror questionnaire.ts exactly ─────────────────
+// ─── Option lists — mirror questionnaire.ts verbatim ────────────────────
 const GENDER = ['Male', 'Female', 'Transgender', 'Prefer not to say'];
 const OCCUPATION = [
   'Sitting (desk, driving, office)',
@@ -50,6 +41,7 @@ const REGIONS = [
   'Other joints',
   'No pain',
 ];
+const REGIONS_SECONDARY = REGIONS.filter((r) => r !== 'No pain');
 const PAIN_DESCRIPTION = [
   'Mild pain that bothers occasionally',
   'Pain that comes and goes in multiple episodes with brief spells of no pain',
@@ -83,11 +75,11 @@ const MED_CONDITIONS = [
   'Active fractures',
   'History of cancer',
   'History of tuberculosis',
-  'Loss of Appetite or Unexplained Weight Loss',
-  'Severe Night Pain',
-  'High Grade Fever',
-  'Shortness of Breath',
-  'History of Neurological Condition',
+  'Loss of appetite / unexplained weight loss',
+  'Severe night pain',
+  'High grade fever',
+  'Shortness of breath',
+  'History of neurological condition',
   'None',
 ];
 const DURATION = ['Since last 7 days', 'Since last 3 months', 'For more than 3 months'];
@@ -95,95 +87,94 @@ const YES_NO = ['Yes', 'No'];
 const DIAGNOSES = [
   'Diabetes',
   'Thyroid',
-  'Hypertension / BP / Stroke',
+  'Hypertension / blood pressure / stroke',
   'Arthritis',
-  'Osteopenia / Osteoporosis',
-  'Prostrate / Gynaecological issues',
-  'Cardiac / Heart conditions',
-  'Neurological (Parkinsons/Stroke)',
-  'Severe Asthma',
-  'Ankylosing Spondylitis',
+  'Osteopenia or osteoporosis',
+  'Prostate or gynaecological issues',
+  'Cardiac or heart conditions',
+  "Neurological conditions (Parkinson's / stroke)",
+  'Severe asthma',
+  // Annex B label fix: spec source said 'spondylolysis' (a different condition).
+  // Corrected to 'spondylitis' (the intended inflammatory arthropathy).
+  'Ankylosing spondylitis',
   'None of the above',
 ];
 const DEFICIENCIES = [
   'Vitamin D3',
   'Vitamin B12',
   'Calcium',
-  'Hemoglobin / Iron',
-  'Not yet tested / No deficiencies',
+  'Haemoglobin / iron',
+  'Not yet tested / no deficiencies',
 ];
 const PAST_SURGERY = [
   'Spine surgery',
   'Cardiac surgery',
-  'Gynaec / Hernia',
+  'Gynaec surgery or hernia',
   'Joint replacements',
   'Other surgeries',
-  'No surgeries',
+  'No surgeries reported',
 ];
+const SURGERY_RECENCY = ['In the last 1 year', 'Done before the previous year'];
 const ORIGINATION = [
-  'Sudden injury or accident (fall, sports, lifting)',
-  'Gradual onset (developed slowly, no clear cause)',
+  'Sudden injury / accident (fall / sports / lifting)',
+  'Gradual onset (no clear cause)',
   'After surgery or medical procedure',
-  'Postural strain or overuse (long sitting, repetitive activity, travelling)',
-  'Unknown cause — not sure how it started',
+  'Postural strain / overuse (long sitting / repetitive / travel)',
+  'Unknown cause',
 ];
 const AGGRAVATOR = [
-  'Daily activities (household, dressing, cooking)',
-  'During mobility (walking, standing, climbing stairs)',
-  'Sitting / Desk work (prolonged sitting, driving)',
-  'Bending / Lifting (picking objects, twisting, carrying)',
-  'Exercise / Sports (running, gym, recreational)',
+  'Daily activities (household / dressing / cooking)',
+  'Mobility (walking / standing / climbing stairs)',
+  'Sitting / desk work (prolonged sitting / computer / driving)',
+  'Bending / lifting (picking / twisting / carrying heavy items)',
+  'Exercise or sports (running / gym / recreational)',
   "Pain doesn't aggravate",
 ];
 const TIMING_3 = [
   'Immediately (within 10 minutes)',
-  'After a few minutes (10-30 minutes)',
+  'After a few minutes (within 10–30 minutes)',
   'After a while (after 30 minutes)',
 ];
 const RELIEVER = [
-  'External factors (balms, hot/ice packs, analgesics)',
-  'While sitting on a chair or couch or floor',
-  'While standing',
-  'While walking',
-  'While sleeping or resting',
-  'While bending or stooping',
-  'While lifting weights',
-  'While exercising or working out',
-  'While turning in bed or rising from chair',
+  'External factors (balms / hot / ice / analgesics)',
+  'Sitting (on chair / couch / floor)',
+  'Standing',
+  'Walking',
+  'Sleeping / resting',
+  'Bending / stooping',
+  'Lifting weights',
+  'Exercises / working out',
+  'Turning in bed / rising from chair',
   "Pain doesn't reduce",
 ];
 const PAST_TREATMENT = [
-  'Applied pain relief gel/balm/spray',
-  'Taken medications under specialist supervision',
-  'Taken physiotherapy/TENS/IFT/traction',
-  'Done home exercises from online videos',
-  'Simply took bed rest',
-  'Underwent ayurveda treatment',
-  'Not undertaken any treatment',
+  'Pain relief gel / balm / spray / analgesics',
+  'Medications under specialist supervision',
+  'Physiotherapy / TENS / IFT / traction',
+  'Home exercises from online videos',
+  'Bed rest only (no medicine / rehab)',
+  'Ayurveda treatment',
+  'Not undertaken any medication or treatment',
 ];
 const TREATMENT_OUTCOME = [
-  'Yes completely, but pain relapsed',
+  'Yes, completely — but pain relapsed',
   'Partial reduction in pain',
-  'Yes but slight pain remains',
+  'Yes, but slight pain is still there',
   'No, it did not help at all',
-  'No, pain increased or worsened further',
+  'No — rather the pain worsened',
 ];
 
-/**
- * Full field catalogue — every entry the LLM may populate.
- * Strictly matches the options used in the chip list of each node.
- */
 export const EXTRACT_FIELDS: ExtractField[] = [
   { key: 'L010401', label: 'Gender', kind: 'enum', enum: GENDER },
-  { key: 'L010301', label: 'Age (years)', kind: 'number', hint: 'Integer age in years. Omit if not mentioned.' },
-  { key: 'height', label: 'Height (cm)', kind: 'number', hint: 'Convert feet/inches to cm if needed. Omit if not mentioned.' },
-  { key: 'weight', label: 'Weight (kg)', kind: 'number', hint: 'Convert lbs to kg if needed. Omit if not mentioned.' },
+  { key: 'L010301', label: 'Age (years)', kind: 'number', hint: 'Integer age in years.' },
+  { key: 'L010501', label: 'Height (cm)', kind: 'number', hint: 'Convert feet/inches to cm if needed.' },
+  { key: 'L010601', label: 'Weight (kg)', kind: 'number', hint: 'Convert lbs to kg if needed.' },
   { key: 'L010701', label: 'Occupation', kind: 'enum', enum: OCCUPATION },
   { key: 'L030101', label: 'Exercise frequency', kind: 'enum', enum: EXERCISE },
-  { key: 'L030201', label: 'Primary pain area', kind: 'enum', enum: REGIONS },
-  { key: 'L030201b', label: 'Secondary pain area', kind: 'enum', enum: REGIONS },
-  { key: 'L030401', label: 'Pain description', kind: 'enum', enum: PAIN_DESCRIPTION },
-  { key: 'L030501', label: 'Pain intensity (1-10)', kind: 'range-1-10', hint: 'Integer 1-10.' },
+  { key: 'L030201', label: 'Primary pain area', kind: 'enum', enum: REGIONS, hint: 'Map colloquial terms: "above buttock"/"lumbar"/"lower spine" → Lower back; "between shoulder blades"/"mid back" → Upper back; "buttock" alone → Hips.' },
+  { key: 'L030201b', label: 'Secondary pain area', kind: 'enum', enum: REGIONS_SECONDARY },
+  { key: 'L030401', label: 'Pain description', kind: 'enum', enum: PAIN_DESCRIPTION, hint: 'Severity descriptor — "comes and goes" alone is feeling (L030601), not description.' },
+  { key: 'L030501', label: 'Pain intensity (1-10)', kind: 'range-1-10' },
   { key: 'L030601', label: 'Feeling of pain', kind: 'enum', enum: PAIN_FEELING },
   { key: 'L030701', label: 'Pain with activity', kind: 'enum', enum: PAIN_ACTIVITY },
   { key: 'L030801', label: 'Other symptoms', kind: 'enum-multi', enum: SYMPTOMS },
@@ -194,7 +185,7 @@ export const EXTRACT_FIELDS: ExtractField[] = [
   { key: 'L170101', label: 'Diagnosed conditions', kind: 'enum-multi', enum: DIAGNOSES },
   { key: 'L170201', label: 'Deficiencies', kind: 'enum-multi', enum: DEFICIENCIES },
   { key: 'L170301', label: 'Past surgeries', kind: 'enum', enum: PAST_SURGERY },
-  { key: 'L170302', label: 'Surgery was recent', kind: 'enum', enum: YES_NO },
+  { key: 'L170302', label: 'Surgery timing', kind: 'enum', enum: SURGERY_RECENCY },
   { key: 'L190101', label: 'How pain started', kind: 'enum', enum: ORIGINATION },
   { key: 'L190201', label: 'Aggravating activity', kind: 'enum', enum: AGGRAVATOR },
   { key: 'L190202', label: 'Aggravation duration', kind: 'enum', enum: TIMING_3 },
@@ -208,22 +199,34 @@ export function fieldByKey(key: string): ExtractField | undefined {
   return EXTRACT_FIELDS.find((f) => f.key === key);
 }
 
-/** Response shape from /api/extract. */
+/** Meta-request kinds the extractor must recognise (Part I.2 mandate 1). */
+export type MetaRequestKind =
+  | 'edit_previous'
+  | 'clarify'
+  | 'repeat'
+  | 'skip'
+  | 'end_session';
+
+/** A LLM extraction can be a normal patch OR a meta-request OR a qualitative note. */
 export interface ExtractResponse {
   success: boolean;
-  /** Fields the LLM was confident enough to fill. May be empty. */
+  /** Fields the LLM was confident enough to fill (high-confidence enum match or numeric). */
   patches: Partial<PatientData> & { height?: string; weight?: string };
-  /** Human-facing labels for each extracted field (for the summary card). */
+  /** Human-facing labels for the summary card. */
   labels: Record<string, string>;
-  /** Optional note explaining what was captured or why something was skipped. */
+  /** Optional explanatory note. */
   notes?: string;
+  /** Spec Part I.2 mandate 1 — meta-request from the user. */
+  metaRequest?: { kind: MetaRequestKind; nodeId?: string };
+  /** Spec Part I.2 mandate 3 — verbatim qualitative observations. */
+  qualitative?: { qcContext?: string; text: string }[];
+  /** When two candidates are within the moderate-confidence range, present both. */
+  ambiguous?: { qc: string; choices: string[] }[];
   error?: string;
 }
 
 export interface ExtractRequest {
   text: string;
-  /** Node the user is currently answering — tells LLM which field to prioritise. */
   nodeId: string;
-  /** Current patient data — used to avoid re-extracting already-known fields. */
   data: PatientData;
 }
