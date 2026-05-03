@@ -37,7 +37,8 @@ const REGIONS = [
   'Hips',
   'Thigh above knee',
   'Leg below knee',
-  'Ankle',
+  // v4.2 #20: 'Ankle' → 'Knee or Ankle'. Mirrors questionnaire.ts PAIN_REGIONS.
+  'Knee or Ankle',
   'Other joints',
   'No pain',
 ];
@@ -70,7 +71,8 @@ const SYMPTOMS = [
 ];
 const TREND = ['Worsening', 'Much better than before', 'Same as before'];
 const MED_CONDITIONS = [
-  'Pregnancy',
+  // v4.3 C3: 'Pregnancy' → 'Pregnancy / Post Pregnancy'. Mirrors questionnaire.
+  'Pregnancy / Post Pregnancy',
   'Recent surgery',
   'Active fractures',
   'History of cancer',

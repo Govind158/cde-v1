@@ -1,5 +1,5 @@
 /**
- * Kriya CDE — Core Types (CDE v4.1).
+ * Kriya CDE — Core Types (CDE v4.4).
  *
  * Three-layer architecture (per Global Instructions):
  *   Layer 1 — LLM extracts structured fields.  Layer 2 — deterministic CDE
@@ -119,6 +119,14 @@ export interface ScoredCondition {
   distinctQcMatches: number;
   /** True if this condition was suppressed/promoted by a safety gate. */
   gateApplied?: string;
+  /**
+   * Set by Gate 4 when a red-flag is denied rank-1 candidacy due to
+   * insufficient feature support.  The score is preserved (no mutation —
+   * see ENGINE-BUG-3 fix) so that confidence math remains meaningful;
+   * the flag pushes the item below all non-red-suppressed candidates
+   * during final ranking.
+   */
+  suppressed?: boolean;
 }
 
 export type SeverityBucket = 'Mild' | 'Moderate' | 'Severe' | 'Emergency';
@@ -141,6 +149,10 @@ export interface SafetyGateLog {
   pregnancyGate: boolean;
   feverBackInfectionForced: boolean;
   contradictionEscalated: boolean;
+  /** Set when Gate 9 (red-flag top-1 floor) raised severity to at least Moderate. */
+  redFlagSeverityFloor?: boolean;
+  /** Verbatim contradictions detected for the clinician report. */
+  contradictions?: string[];
 }
 
 /** Standing caveat — every ResultCard MUST display this exact text (Part VII). */
@@ -148,7 +160,7 @@ export const STANDING_CAVEAT =
   'This is a risk assessment, not a diagnosis. Please consult a qualified clinician to confirm the cause of your symptoms and decide on treatment.';
 
 /** Engine version stamp for audit (Part VIII reconstructability contract). */
-export const ENGINE_VERSION = 'CDE-v4.1';
+export const ENGINE_VERSION = 'CDE-v4.4';
 
 export interface DiagnosticResult {
   user: { age?: string; gender?: string; bmi?: number };
@@ -177,6 +189,8 @@ export interface NoPainResult {
   action: string;
   disclaimer: string;
   engineVersion: string;
+  /** Per Part VIII reconstructability — record the gate that short-circuited. */
+  gates?: SafetyGateLog;
 }
 
 export type EngineOutput = DiagnosticResult | NoPainResult;

@@ -53,7 +53,9 @@ const MAP: Partial<Record<QcCode, Record<string, RowLetter>>> = {
     Hips: 'G',
     'Thigh above knee': 'H',
     'Leg below knee': 'I',
-    Ankle: 'J',
+    // v4.2 #20: row J retitled 'Ankle' → 'Knee or Ankle' for anatomical
+    // coherence of Knee region triggers (H/I/J).
+    'Knee or Ankle': 'J',
     'Other joints': 'K',
     'No pain': 'L',
   },
@@ -68,7 +70,7 @@ const MAP: Partial<Record<QcCode, Record<string, RowLetter>>> = {
     Hips: 'G',
     'Thigh above knee': 'H',
     'Leg below knee': 'I',
-    Ankle: 'J',
+    'Knee or Ankle': 'J',
     'Other joints': 'K',
   },
   L030401: {
@@ -104,7 +106,9 @@ const MAP: Partial<Record<QcCode, Record<string, RowLetter>>> = {
     'Same as before': 'C',
   },
   L031001: {
-    Pregnancy: 'A',
+    // v4.3 C3: row A label expanded so users in either pregnancy or
+    // post-pregnancy state self-select correctly. Scoring weights unaffected.
+    'Pregnancy / Post Pregnancy': 'A',
     'Recent surgery': 'B',
     'Active fractures': 'C',
     'History of cancer': 'D',

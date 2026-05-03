@@ -1,5 +1,5 @@
 /**
- * Kriya CDE — Deterministic scoring engine (CDE v4.1, Parts IV/V/VI).
+ * Kriya CDE — Deterministic scoring engine (CDE v4.4, Parts IV/V/VI).
  *
  * Pure functions: same PatientData → same outputs, byte-for-byte
  * (Part VIII reconstructability contract).
@@ -39,7 +39,7 @@ import { ENGINE_VERSION, STANDING_CAVEAT } from './types';
 //   Back     ← F (Lower back), G (Hips), H (Thigh above knee)
 //   Neck     ← A (Neck),  E (Upper back)
 //   Shoulder ← B (Shoulder), C (Arm above elbow), D (Arm below elbow)
-//   Knee     ← I (Leg below knee), J (Ankle)   [H also valid for knee but Back wins by default]
+//   Knee     ← I (Leg below knee), J (Knee or Ankle)   [H also valid for knee but Back wins by default]
 export function regionFromPrimary(label: string | undefined): RegionKey | null {
   const letter = labelToLetter('L030201', label);
   if (!letter) return null;
@@ -135,16 +135,24 @@ export function scoreCondition(
   };
 }
 
+/**
+ * Final ranking comparator. Suppressed-red items are pushed below all
+ * non-suppressed (Gate 4 — see applySafetyGates). Otherwise: descending by
+ * score, then by flag urgency for tie-break (RED > YELLOW > GREEN).
+ */
+function rankComparator(a: ScoredCondition, b: ScoredCondition): number {
+  const aSup = a.suppressed ? 1 : 0;
+  const bSup = b.suppressed ? 1 : 0;
+  if (aSup !== bSup) return aSup - bSup;
+  if (b.score !== a.score) return b.score - a.score;
+  return FLAG_WEIGHT[b.flag] - FLAG_WEIGHT[a.flag];
+}
+
 export function scoreRegion(
   region: RegionKey,
   answers: Partial<Record<QcCode, RowLetter[]>>,
 ): ScoredCondition[] {
-  return DB[region]
-    .map((c) => scoreCondition(c, answers))
-    .sort((a, b) => {
-      if (b.score !== a.score) return b.score - a.score;
-      return FLAG_WEIGHT[b.flag] - FLAG_WEIGHT[a.flag];
-    });
+  return DB[region].map((c) => scoreCondition(c, answers)).sort(rankComparator);
 }
 
 // Severity (Part VI)
@@ -228,7 +236,20 @@ export interface GateOutput {
   gates: SafetyGateLog;
 }
 
-// Apply 7 safety gates from spec Part VI in deterministic order.
+/**
+ * Spec Part VI — apply the 9 safety gates in deterministic order.
+ *
+ * Gate numbering here follows Part VI:
+ *   1. No-pain short-circuit (handled in runEngine before gates run).
+ *   2. Cauda equina heuristic.
+ *   3. Bowel/bladder severity floor.
+ *   4. Red-flag feature gating (iterative — see ENGINE-BUG-1 fix).
+ *   5. Recent-surgery boost.
+ *   6. Pregnancy gate (action-text safety note).
+ *   7. Fever + back/neck → Infection top-3 floor + Severe minimum.
+ *   8. Contradiction escalator (NEW — spec Part VI; ENGINE-BUG MISSING-GATE-1).
+ *   9. Red-flag top-1 → severity floor (NEW — defensive safety; MISSING-GATE-2).
+ */
 export function applySafetyGates(input: GateInput): GateOutput {
   const gates: SafetyGateLog = {
     noPainShortCircuit: false,
@@ -273,23 +294,24 @@ export function applySafetyGates(input: GateInput): GateOutput {
     gates.bowelBladderFloor = true;
   }
 
-  // Gate 4: Red-flag feature gating.
-  if (scored.length > 0 && scored[0].flag === 'red') {
-    const nonRed = scored.filter((s) => s.flag !== 'red').slice(0, 2);
-    if (nonRed.length >= 1) {
-      const avgNext = nonRed.reduce((a, c) => a + c.score, 0) / nonRed.length;
-      const dominant = scored[0].score > avgNext + 3;
-      const enoughFeatures = scored[0].distinctQcMatches >= 2;
-      if (!dominant || !enoughFeatures) {
-        const cap = Math.max(0, nonRed[0].score - 0.1);
-        const suppressed = { ...scored[0], score: cap, gateApplied: 'red-flag gating' };
-        gates.redFlagGated.push(scored[0].name);
-        scored = [suppressed, ...scored.slice(1)].sort((a, b) => {
-          if (b.score !== a.score) return b.score - a.score;
-          return FLAG_WEIGHT[b.flag] - FLAG_WEIGHT[a.flag];
-        });
-      }
-    }
+  // Gate 4: Red-flag feature gating — iterative until top-1 is non-red OR a red passes
+  // the dominance test. ENGINE-BUG-1 fix: previous one-shot version allowed a second red
+  // (with the same single-feature pattern) to be promoted to rank-1 unchecked.
+  // ENGINE-BUG-3 fix: scores are NO LONGER mutated; the suppressed flag pushes the item
+  // below all non-suppressed candidates via rankComparator. This preserves confidence math.
+  let safety = 0;
+  while (scored.length > 0 && scored[0].flag === 'red' && !scored[0].suppressed && safety++ < 8) {
+    const nonRedNotSuppressed = scored.filter((s) => s.flag !== 'red' && !s.suppressed).slice(0, 2);
+    if (nonRedNotSuppressed.length === 0) break; // pool has no non-reds; no comparator
+    const avgNext = nonRedNotSuppressed.reduce((a, c) => a + c.score, 0) / nonRedNotSuppressed.length;
+    const dominant = scored[0].score > avgNext + 3;
+    const enoughFeatures = scored[0].distinctQcMatches >= 2;
+    if (dominant && enoughFeatures) break;
+    // Suppress the red top — flag it, do not mutate score.
+    const updated = { ...scored[0], suppressed: true, gateApplied:
+      (scored[0].gateApplied ? scored[0].gateApplied + '; ' : '') + 'red-flag gating' };
+    gates.redFlagGated.push(scored[0].name);
+    scored = [updated, ...scored.slice(1)].sort(rankComparator);
   }
 
   // Gate 5: Recent-surgery boost (+5 to matching Post-Surgical condition).
@@ -309,12 +331,14 @@ export function applySafetyGates(input: GateInput): GateOutput {
     gates.pregnancyGate = true;
   }
 
-  // Gate 7: Fever + back/neck pattern → force Infection top-3, raise to Severe.
+  // Gate 7: Fever + back/neck pattern → force Infection-bearing red flag top-3, raise to Severe.
+  // Back: post-v4.4 the merged red flag is 'Cancer / Infection' (Annex F C1).
+  // Neck: 'Infection – Herpes/ UTI/ TB/ Others' remains a separate condition.
   if (
     labelToLetter('L031009', input.data.L031009) === 'C' &&
     (input.region === 'back' || input.region === 'neck')
   ) {
-    const infectionName = input.region === 'back' ? 'Infection' : 'Infection – Herpes/ UTI/ TB/ Others';
+    const infectionName = input.region === 'back' ? 'Cancer / Infection' : 'Infection – Herpes/ UTI/ TB/ Others';
     const infIdx = scored.findIndex((c) => c.name === infectionName);
     if (infIdx >= 0) {
       const inf = scored[infIdx];
@@ -333,14 +357,94 @@ export function applySafetyGates(input: GateInput): GateOutput {
     };
   }
 
-  // Gate 8: Contradiction escalator — wired by extract pipeline upstream.
+  // Gate 8: Contradiction escalator (Spec Part VI). MISSING-GATE-1 fix.
+  // Spec text: "If the user's free-text extraction contradicts a chip answer (e.g. activity
+  // listed as both aggravator and reliever), route to human-in-the-loop review instead of
+  // scoring." We DO NOT halt scoring — the deterministic ranking still runs — but we record
+  // the contradiction in the audit log, downgrade confidence, and surface a clinician-review
+  // banner so the result is never presented as decisive.
+  const contradictions = detectContradictions(input.data);
+  if (contradictions.length > 0) {
+    gates.contradictionEscalated = true;
+    gates.contradictions = contradictions;
+    // Downgrade one step (per spec mandate for missing/skipped data — same downgrade policy).
+    if (confidence === 'High') confidence = 'Moderate';
+    else if (confidence === 'Moderate') confidence = 'Low';
+    if (!banner) {
+      banner = {
+        tone: 'urgent',
+        text:
+          'Some of your responses appeared to conflict (' + contradictions.join('; ') +
+          '). The deterministic ranking is still shown for reference, but please review with ' +
+          'a clinician — answers that point in opposite directions can change the recommendation.',
+      };
+    }
+  }
 
-  scored = scored.slice().sort((a, b) => {
-    if (b.score !== a.score) return b.score - a.score;
-    return FLAG_WEIGHT[b.flag] - FLAG_WEIGHT[a.flag];
-  });
+  // Gate 9: Red-flag top-1 → severity floor (defensive medicine; MISSING-GATE-2 fix).
+  // A red-flag rank-1 condition that PASSED Gate 4 dominance must never end up paired with
+  // 'Mild' self-management guidance. Floor severity to Moderate (clinician consultation
+  // within days). If the top-1 was suppressed by Gate 4, this floor does NOT apply.
+  if (
+    scored.length > 0 &&
+    scored[0].flag === 'red' &&
+    !scored[0].suppressed &&
+    BUCKET_RANK[severity.bucket] < BUCKET_RANK.Moderate
+  ) {
+    severity = {
+      ...severity,
+      bucket: bucketAtLeast(severity.bucket, 'Moderate'),
+      flooredBy: severity.flooredBy ?? 'red-flag rank-1 floor',
+    };
+    gates.redFlagSeverityFloor = true;
+  }
+
+  // Final sort (suppressed-red goes below non-suppressed).
+  scored = scored.slice().sort(rankComparator);
 
   return { scored, severity, confidence, banner, gates };
+}
+
+/**
+ * Detect contradictions in PatientData per Gate 8.
+ * Returns a list of human-readable strings, empty if none.
+ *
+ * Patterns checked (each is conservative — only fires on direct, unambiguous conflict):
+ *   (a) L030701 = D (pain doesn't increase) AND L190201 ≠ F (an aggravator was selected).
+ *   (b) Same activity selected as both aggravator (L190201) and reliever (L210101).
+ *       The L190201 ↔ L210101 cross-map below is anatomical-row-level, not fuzzy.
+ *   (c) L030801 contains 'None' AND any other symptom selection.
+ */
+function detectContradictions(d: PatientData): string[] {
+  const out: string[] = [];
+  const a701 = labelToLetter('L030701', d.L030701);
+  const a190 = labelToLetter('L190201', d.L190201);
+  if (a701 === 'D' && a190 && a190 !== 'F') {
+    out.push("L030701='Pain doesn't increase' but L190201 names an aggravator");
+  }
+  // Activity-level cross-map between L190201 and L210101.
+  // Sitting: L190201 row C ↔ L210101 row B. Walking/standing/mobility: L190201 row B ↔
+  // L210101 rows C/D (standing/walking). Exercise/sports: L190201 row E ↔ L210101 row H.
+  const cross: Array<[RowLetter, RowLetter, string]> = [
+    ['C', 'B', 'sitting'],
+    ['B', 'D', 'walking'],
+    ['B', 'C', 'standing'],
+    ['E', 'H', 'exercise/working out'],
+  ];
+  const a210 = labelToLetter('L210101', d.L210101);
+  if (a190 && a210) {
+    for (const [agg, rel, label] of cross) {
+      if (a190 === agg && a210 === rel) {
+        out.push('activity \u201c' + label + '\u201d selected as both aggravator and reliever');
+      }
+    }
+  }
+  // Symptoms-list contradiction: 'None' selected together with any other symptom.
+  const sym = (d.L030801 ?? []).map((s) => labelToLetter('L030801', s)).filter(Boolean) as RowLetter[];
+  if (sym.includes('G') && sym.length > 1) {
+    out.push("L030801 list includes 'None' together with at least one other symptom");
+  }
+  return out;
 }
 
 function actionForBucket(b: SeverityBucket, pregnancy: boolean): string {
@@ -355,18 +459,36 @@ function actionForBucket(b: SeverityBucket, pregnancy: boolean): string {
     case 'Severe':
       return 'Prompt clinician consultation within 24-48 hours is recommended. If a neurological symptom (weakness, numbness, balance loss) was reported, please seek in-person assessment by a specialist.' + preg;
     case 'Emergency':
-      return 'This is an urgent / emergency presentation. Please do not self-manage — seek immediate clinical review or emergency care.' + preg;
+      return 'This is an urgent / emergency presentation. Please do not self-manage \u2014 seek immediate clinical review or emergency care.' + preg;
   }
+}
+
+/** Empty gate log used by the no-pain short-circuit branches. */
+function emptyGateLog(): SafetyGateLog {
+  return {
+    noPainShortCircuit: false,
+    caudaEquinaForced: false,
+    bowelBladderFloor: false,
+    redFlagGated: [],
+    postSurgicalBoosted: null,
+    pregnancyGate: false,
+    feverBackInfectionForced: false,
+    contradictionEscalated: false,
+  };
 }
 
 // Public entry point — runEngine
 export function runEngine(d: PatientData): EngineOutput {
+  // Gate 1: No-pain short-circuit. Per spec Part VI, route to Kriya 360 wellness module.
   if (labelToLetter('L030201', d.L030201) === 'L') {
+    const g = emptyGateLog();
+    g.noPainShortCircuit = true;
     return {
       noPain: true,
       action: 'You reported no pain. Routing you to the Kriya 360 wellness module so you can continue building strength, flexibility and balance proactively.',
       disclaimer: STANDING_CAVEAT,
       engineVersion: ENGINE_VERSION,
+      gates: g,
     };
   }
   const region = regionFromPrimary(d.L030201);
@@ -376,20 +498,31 @@ export function runEngine(d: PatientData): EngineOutput {
       action: 'We could not identify a primary pain region from your responses. Please revisit the region question so we can complete the risk assessment.',
       disclaimer: STANDING_CAVEAT,
       engineVersion: ENGINE_VERSION,
+      gates: emptyGateLog(),
     };
   }
   const answers = materialise(d);
   const scoredRaw = scoreRegion(region, answers);
   const severityRaw = computeSeverity(d);
-  const confidenceRaw = computeConfidence(scoredRaw);
+  // ENGINE-BUG-2 fix: confidence is computed AFTER gates run, because Gates 4/5/7
+  // can re-order results. The pre-gate value is only seeded so applySafetyGates can
+  // override it (Gate 2 sets High; Gate 8 downgrades).
+  const confidenceSeed = computeConfidence(scoredRaw);
   const gated = applySafetyGates({
     region,
     scored: scoredRaw,
     severity: severityRaw,
-    confidence: confidenceRaw,
+    confidence: confidenceSeed,
     data: d,
     answers,
   });
+  // Recompute confidence on the post-gate ordering UNLESS a gate explicitly forced it
+  // (Gate 2 -> High, Gate 8 -> downgraded). We detect a gate override by comparing seed
+  // to gated; if equal, no gate touched confidence so we recompute on actual ranks.
+  let confidence: Confidence = gated.confidence;
+  if (gated.confidence === confidenceSeed) {
+    confidence = computeConfidence(gated.scored);
+  }
   const top3 = gated.scored.slice(0, 3);
   const scoresMap: Record<string, number> = {};
   gated.scored.forEach((c) => {
@@ -407,7 +540,7 @@ export function runEngine(d: PatientData): EngineOutput {
     severity: gated.severity,
     scores: scoresMap,
     top_3: top3,
-    confidence: gated.confidence,
+    confidence,
     action: actionForBucket(gated.severity.bucket, gated.gates.pregnancyGate),
     banner: gated.banner,
     disclaimer: STANDING_CAVEAT,

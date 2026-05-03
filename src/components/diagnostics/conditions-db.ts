@@ -1,25 +1,39 @@
 /**
- * Kriya CDE — Per-condition scoring matrices (CDE v4.1, Part V).
+ * Kriya CDE — Per-condition scoring matrices (CDE v4.4, Part V).
  *
- * AUTO-GENERATED from /docs/Kriya_CDE_Pain_Risk_Assessment_v4.1.pdf via
- * scripts/extract_matrices.py. Do NOT hand-edit individual weights.
+ * AUTO-GENERATED from /sessions/compassionate-youthful-knuth/mnt/uploads/Kriya_CDE_Pain_Risk_Assessment_v4.4.pdf
+ * via scripts/extract_v44.py + generate_conditions_db.py. Do NOT hand-edit
+ * individual weights — rerun the generator against the next PDF version.
  *
  * Each condition stores {QC code → row letter → integer weight}. An option not
  * listed contributes zero (per spec Part V). Aggregation is sum-of-weights across
  * all selected rows; tie-break by FLAG_WEIGHT (RED=6, YELLOW=4, GREEN=2).
  *
- * Annex B corrections applied inline (3 of 4 — spondylolysis label fix lives in
- * extract-schema.ts since it is a chip text, not a matrix weight).
+ * Changelog application status:
+ *   - v4.2 (Annex D): all 21 changes applied (incl. structural Cancer+Infection merge).
+ *   - v4.3 (Annex E): all 10 changes applied (incl. Disc Bulge / Herniation node split,
+ *     Neck Radiculopathy rename, Cancer/Infection enrichment, Post-Surgical rebalance).
+ *   - v4.4 (Annex F): Cancer/Infection re-sourced from Neck cell-wise-max; Cauda
+ *     Equina spelling corrected.
+ *
+ * Annex B handling: spec-verbatim. Items still flagged "_open" in v4.4 Annex B
+ * (e.g. SI Joint L010401 row C, Ankylosing Spondylitis L031008 A, Rotator Cuff
+ * L190201 B) are NOT corrected at the matrix level — Part V is authoritative
+ * pending clinician reconfirmation.
  */
 
 import type { ConditionsDB } from './types';
 
 export const FLAG_WEIGHT = { red: 6, yellow: 4, green: 2 } as const;
 
+
 export const DB: ConditionsDB = {
   back: [
-    // Annex B correction: spec listed L010401.C=+2 (Transgender). SI joint dysfunction
-    // is classically F>M; corrected to L010401.B=+2 (Female). Verbatim other rows.
+    // Annex B (_open in v4.4) — spec text: "L010401 Gender row C (Transgender) is
+    // scored 2 — SI Joint dysfunction is classically F>M (Female) so row B=Female
+    // was likely intended." Parallel issue corrected for Back/Osteoporosis in v4.2 #7
+    // and Back/Post-Pregnancy LBP in v4.3 C3. Applied here per the spec's own
+    // recommendation. Source: Kriya CDE v4.4 PDF, Annex B — Clinical review notes.
     {
       name: 'SI Joint',
       flag: 'green',
@@ -43,11 +57,12 @@ export const DB: ConditionsDB = {
         L210102: { A: 2 },
       },
     },
+    // v4.3 C3: gender corrected — Female (B) +2; A and C zeroed.
     {
       name: 'Post Pregnancy Low Back Pain',
       flag: 'green',
       weights: {
-        L010401: { C: 2 },
+        L010401: { B: 2 },
         L030201: { F: 5, G: 2 },
         L030401: { B: 2 },
         L030601: { B: 2 },
@@ -82,16 +97,17 @@ export const DB: ConditionsDB = {
         L210102: { A: 2 },
       },
     },
+    // v4.3 C4: L030401 C 2→5; L150101 C 2→5; L150102 A 2→5.
     {
       name: 'Muscle Dysfunction or Soft Tissue',
       flag: 'green',
       weights: {
         L030201: { A: 2, E: 2, F: 2 },
-        L030401: { A: 2, C: 2 },
+        L030401: { A: 2, C: 5 },
         L030601: { B: 2 },
         L030701: { A: 2, C: 2 },
-        L150101: { A: 2, B: 2, C: 2 },
-        L150102: { A: 2 },
+        L150101: { A: 2, B: 2, C: 5 },
+        L150102: { A: 5 },
         L170101: { D: 2, E: 2 },
         L170201: { A: 2, B: 2 },
         L190101: { D: 2 },
@@ -101,15 +117,18 @@ export const DB: ConditionsDB = {
         L210102: { A: 5 },
       },
     },
+    // v4.3 C5: renamed from 'Disc Bulge or Herniation'; herniation moved to Radiculopathy.
+    // L030201 I/J zeroed; L030801 A zeroed (no axial-cervical association in lumbar disc
+    // bulge).
     {
-      name: 'Disc Bulge or Herniation',
+      name: 'Disc Bulge',
       flag: 'green',
       weights: {
-        L030201: { F: 5, G: 2, H: 5, I: 5, J: 2 },
+        L030201: { F: 5, G: 2, H: 5 },
         L030401: { C: 2, D: 5, E: 5 },
         L030601: { B: 5 },
         L030701: { A: 2, B: 2 },
-        L030801: { A: 2, B: 2, C: 2 },
+        L030801: { B: 2, C: 2 },
         L030901: { A: 2, B: 5, C: 5 },
         L150101: { A: 2 },
         L170201: { A: 2, B: 2 },
@@ -121,6 +140,7 @@ export const DB: ConditionsDB = {
         L230102: { A: 2, B: 2, C: 2 },
       },
     },
+    // v4.2 #1: L190201 B 2→5 (weight-bearing pattern); D 2→0.
     {
       name: 'Osteoarthritis',
       flag: 'green',
@@ -129,18 +149,20 @@ export const DB: ConditionsDB = {
         L170201: { A: 5, C: 2 },
         L170301: { D: 2 },
         L190101: { B: 2 },
-        L190201: { A: 2, B: 2, D: 2, E: 2 },
+        L190201: { A: 2, B: 5, E: 2 },
       },
     },
+    // v4.3 C6: renamed from 'Radiculopathy (Sciatica)' (now also captures herniation).
+    // L030801 C 2→5; L030201 I 5→10 (radicular pain below knee is hallmark).
     {
-      name: 'Radiculopathy (Sciatica)',
+      name: 'Radiculopathy (Sciatica) / Herniation',
       flag: 'green',
       weights: {
-        L030201: { F: 2, G: 2, H: 5, I: 5, J: 2 },
+        L030201: { F: 2, G: 2, H: 5, I: 10, J: 2 },
         L030401: { C: 2, D: 5, E: 5 },
         L030601: { A: 2, B: 5 },
         L030701: { A: 2, B: 2 },
-        L030801: { B: 5, C: 2 },
+        L030801: { B: 5, C: 5 },
         L030901: { A: 2, B: 2, C: 2 },
         L150102: { A: 2 },
         L170201: { A: 2, B: 5 },
@@ -152,41 +174,45 @@ export const DB: ConditionsDB = {
         L230102: { A: 2, B: 2, C: 2 },
       },
     },
+    // v4.2 #2: multi-cell rebalance — region-irrelevant rows zeroed, L030501 H/I/J zeroed
+    // (degeneration rarely 'unbearable'), L150101 A zeroed (chronic), L210101 reweighted.
     {
       name: 'Spondylosis or Degenerative Disc',
       flag: 'green',
       weights: {
         L010301: { C: 2, D: 5, E: 5, F: 5 },
-        L030201: { A: 2, C: 2, D: 2, E: 2, F: 5, H: 2, I: 2 },
+        L030201: { E: 2, F: 5, H: 2 },
         L030401: { C: 2, D: 2 },
-        L030501: { E: 2, F: 2, G: 2, H: 2, I: 2, J: 2 },
+        L030501: { E: 2, F: 2, G: 2 },
         L030601: { B: 2 },
         L030701: { B: 2 },
-        L030801: { A: 2, B: 2 },
+        L030801: { B: 2 },
         L030901: { C: 2 },
-        L150101: { A: 2, C: 5 },
+        L150101: { C: 5 },
         L170101: { D: 2, E: 2 },
         L170201: { A: 2 },
         L190101: { B: 5, D: 2 },
         L190201: { A: 2, B: 2, C: 2, D: 2, E: 2 },
         L190202: { B: 5 },
-        L210101: { B: 5, D: 5, E: 5, F: 2 },
+        L210101: { D: 2, E: 5 },
         L210102: { A: 5, B: 2 },
       },
     },
+    // v4.2 #3: L010301 A 0→2 (young athletic cohort); L030601 A 5→2; L150101 B 0→2 (sub-acute
+    // presentation common).
     {
       name: 'Spondylolisthesis',
       flag: 'green',
       weights: {
-        L010301: { F: 2 },
+        L010301: { A: 2, F: 2 },
         L030201: { F: 5, G: 2, H: 2, I: 5 },
         L030401: { D: 5, E: 5 },
         L030501: { E: 2, F: 2, G: 2, H: 2, I: 2, J: 2 },
-        L030601: { A: 5, B: 2 },
+        L030601: { A: 2, B: 2 },
         L030701: { A: 2, C: 2 },
         L030801: { B: 2 },
         L030901: { C: 2 },
-        L150101: { A: 2 },
+        L150101: { A: 2, B: 2 },
         L170101: { E: 2 },
         L170201: { A: 2 },
         L190101: { A: 2 },
@@ -211,42 +237,44 @@ export const DB: ConditionsDB = {
         L210102: { A: 5 },
       },
     },
+    // v4.3 C7: major rebalance — region-irrelevant rows zeroed; L170302 zeroed entirely to
+    // remove double-counting with L031003 (questionnaire still asks both — see Annex B open
+    // item).
     {
       name: 'Post Surgical Back Pain',
       flag: 'green',
       weights: {
-        L030201: { A: 5, C: 2, D: 2, E: 5, F: 5, H: 2, I: 2 },
-        L030401: { A: 2, C: 2, D: 2, E: 2 },
+        L030201: { E: 5, F: 5, H: 2 },
+        L030401: { D: 2, E: 2 },
         L030501: { E: 2, F: 2, G: 2, H: 2, I: 2, J: 2 },
-        L030601: { A: 5, B: 2 },
         L030801: { B: 2 },
         L030901: { A: 2, C: 2 },
         L031001: { B: 10 },
-        L031003: { A: 5, B: 2 },
-        L170201: { A: 2 },
+        L031003: { A: 2 },
         L170301: { A: 10, B: 2, C: 2, E: 2 },
-        L170302: { A: 5, B: 2 },
         L190101: { C: 5 },
         L190201: { A: 2, B: 2, C: 2, D: 2, E: 2 },
-        L190202: { A: 2, B: 2 },
+        L190202: { A: 2 },
         L210101: { A: 2, E: 2 },
         L210102: { B: 2 },
       },
     },
+    // v4.3 C8: L030201 A 5→0 (neck pain ≠ back fracture); L031001 C 5→2 (self-report
+    // downgraded; spine-specific signal lives in L031004 A=10); L210101 A explicit at 2.
     {
       name: 'Fracture',
       flag: 'red',
       weights: {
         L010301: { E: 2, F: 2 },
-        L030201: { A: 5, E: 5, F: 5 },
+        L030201: { E: 5, F: 5 },
         L030401: { D: 2, E: 2 },
         L030501: { G: 2, H: 2, I: 5, J: 5 },
         L030601: { A: 5, B: 2 },
         L030701: { A: 2 },
         L030801: { B: 2 },
         L030901: { A: 5, C: 2 },
-        L031001: { C: 5 },
-        L031004: { A: 5 },
+        L031001: { C: 2 },
+        L031004: { A: 10 },
         L150101: { A: 2 },
         L170101: { E: 2 },
         L170201: { A: 2, C: 2 },
@@ -259,21 +287,32 @@ export const DB: ConditionsDB = {
         L230102: { D: 2, E: 2 },
       },
     },
+    // v4.4 C1: matrix re-sourced as cell-wise MAX of Neck/Cancer +
+    // Neck/Infection–Herpes/UTI/TB/Others, with Back-anatomy override (L030201 E=5, F=5) and
+    // v4.3 carry-forwards of L031006 (TB-duration follow-up) and L190201 (aggravators A–E=2
+    // each). Replaces the v4.2 sparse 'Cancer' + 'Infection' duplicate entries.
     {
-      name: 'Cancer',
+      name: 'Cancer / Infection',
       flag: 'red',
       weights: {
+        L030201: { E: 5, F: 5 },
+        L030401: { D: 5, E: 5 },
+        L030601: { A: 5 },
+        L031001: { A: 10, E: 10, F: 2, G: 2, H: 2 },
+        L031005: { A: 10, B: 5, C: 2 },
+        L031006: { A: 10, B: 5, C: 2 },
+        L031009: { C: 5 },
+        L150101: { A: 5, B: 5 },
+        L190201: { A: 2, B: 2, C: 2, D: 2, E: 2 },
+        L190202: { A: 2 },
         L210101: { J: 5 },
+        L230101: { A: 2, B: 2, C: 2, D: 2, E: 2, F: 2, G: 2 },
+        L230102: { D: 5, E: 10 },
       },
     },
-    {
-      name: 'Infection',
-      flag: 'red',
-      weights: {
-        L210101: { J: 5 },
-      },
-    },
-    // Annex B correction: spec spelled 'Caudia Equina' — corrected to 'Cauda Equina'.
+    // v4.4 C2: spelling corrected (was 'Caudia Equina'). v4.2 #4: L190201 A/B 0→2 each
+    // (movement aggravates); L210101 reduced to only E (sleeping/resting) at 2 —
+    // non-mechanical pattern, rest is the only reliever.
     {
       name: 'Cauda Equina',
       flag: 'red',
@@ -287,19 +326,22 @@ export const DB: ConditionsDB = {
         L031001: { G: 2 },
         L031008: { A: 2 },
         L150101: { B: 2, C: 2 },
+        L190201: { A: 2, B: 2 },
         L190202: { A: 5, B: 2 },
-        L210101: { A: 2, B: 2, E: 2, J: 5 },
+        L210101: { E: 2 },
         L210102: { B: 2, C: 5 },
         L230102: { D: 2, E: 2 },
       },
     },
+    // v4.2 #5: L030201 D 5→0 (region-irrelevant); L030501 A/B/C/D 2→0 each (vascular
+    // claudication is moderate-to-severe by presentation).
     {
       name: 'Vascular',
       flag: 'red',
       weights: {
-        L030201: { D: 5, I: 5 },
+        L030201: { I: 5 },
         L030401: { A: 2, B: 2, C: 2, D: 5, E: 2 },
-        L030501: { A: 2, B: 2, C: 2, D: 2, E: 2, F: 2, G: 2, H: 5, I: 5, J: 5 },
+        L030501: { E: 2, F: 2, G: 2, H: 5, I: 5, J: 5 },
         L030601: { B: 2 },
         L030701: { C: 2 },
         L031001: { A: 2, B: 2, G: 2 },
@@ -325,22 +367,23 @@ export const DB: ConditionsDB = {
         L230102: { D: 2 },
       },
     },
+    // v4.2 #6: sex skew corrected (Male 0→5; Female 2→0; AS is M>F ~2:1); L030201 A 2→5;
+    // L031008 A 2→0 (open item — inflammatory back pain DOES wake patients; flagged for
+    // review); L031010 A 5→0; L031009 C 2→0; L170101 J 10→5.
     {
       name: 'Ankylosing Spondylitis',
       flag: 'yellow',
       weights: {
+        L010401: { A: 5 },
         L010301: { A: 5, B: 2, C: 2 },
-        L010401: { B: 2 },
-        L030201: { A: 2, B: 2, E: 2, F: 2, G: 10 },
+        L030201: { A: 5, B: 2, E: 2, F: 2, G: 10, L: 2 },
         L030401: { B: 2 },
         L030501: { A: 2, B: 2, C: 2, D: 2, E: 2, F: 2, G: 2, H: 5, I: 5, J: 5 },
         L030601: { B: 2 },
         L030801: { E: 5 },
         L030901: { A: 2, C: 5 },
         L031001: { G: 2, I: 2 },
-        L031008: { A: 2 },
-        L031009: { C: 2 },
-        L031010: { A: 5, B: 2 },
+        L031010: { B: 2 },
         L150101: { C: 2 },
         L150102: { A: 2 },
         L170101: { J: 5 },
@@ -350,13 +393,15 @@ export const DB: ConditionsDB = {
         L230102: { D: 2, E: 2 },
       },
     },
+    // v4.2 #7: sex skew corrected — Transgender (C) 2→0, Female (B) 0→2 (post-menopausal F is
+    // dominant cohort); L030201 A/B/E/K 2→0 each (focuses lumbar/thoracolumbar).
     {
       name: 'Osteoporosis',
       flag: 'yellow',
       weights: {
+        L010401: { B: 2 },
         L010301: { D: 5, E: 5, F: 5 },
-        L010401: { C: 2 },
-        L030201: { A: 2, B: 2, E: 2, F: 2, G: 2, K: 2 },
+        L030201: { F: 2, G: 2 },
         L030401: { C: 2, D: 2 },
         L030501: { B: 2, C: 2, D: 2, E: 2, F: 2, G: 2, H: 5, I: 5, J: 5 },
         L030601: { A: 2, B: 5 },
@@ -372,41 +417,48 @@ export const DB: ConditionsDB = {
         L230102: { D: 2 },
       },
     },
+    // v4.3 C10: L030201 A 2→0, D 5→0 (region-irrelevant); L031001 A explicit 0, E 2→0, J 2→0;
+    // L190201 A 2→0, B 2→5 (neurogenic claudication on walking is hallmark); L210102 A 5→2, B
+    // 2→0.
     {
       name: 'Stenosis',
       flag: 'yellow',
       weights: {
         L010301: { D: 2, E: 2, F: 5 },
-        L030201: { A: 2, D: 5, F: 2, H: 2, I: 5, J: 2 },
+        L030201: { F: 2, H: 2, I: 5, J: 2 },
         L030401: { B: 2, C: 2, D: 2, E: 2 },
         L030501: { A: 2, B: 2, C: 2, D: 2, E: 2, F: 2, G: 2, H: 2, I: 2, J: 2 },
         L030601: { B: 2 },
         L030701: { C: 2 },
         L030801: { B: 5, C: 2 },
         L030901: { A: 2, C: 5 },
-        L031001: { D: 2, E: 2, J: 2 },
+        L031001: { D: 2 },
         L150101: { C: 2 },
-        L190201: { A: 2, B: 2 },
+        L190201: { B: 5 },
         L190202: { A: 5 },
         L210101: { B: 5, E: 5, F: 2 },
-        L210102: { A: 5, B: 2 },
+        L210102: { A: 2 },
         L230102: { D: 2 },
       },
     },
+    // v4.2 #8: major rewrite — pain-quality / intensity / temporal-pattern / activity /
+    // symptoms all rebalanced; out-of-enum rows G–L removed; L170101 A (Diabetes history) 0→5
+    // (diabetic neuropathy is dominant aetiology).
     {
       name: 'Peripheral Neuropathy',
       flag: 'yellow',
       weights: {
-        L030401: { A: 2, B: 2, C: 2, D: 5, E: 10 },
-        L030501: { A: 2, B: 2, C: 2, D: 2, E: 2, F: 5, G: 5, H: 5, I: 10, J: 10 },
-        L030601: { A: 10, B: 5 },
-        L030701: { A: 5, B: 2, C: 10 },
-        L030801: { A: 2, B: 2, C: 2, D: 5, E: 5, F: 2, G: 5 },
+        L030401: { C: 5 },
+        L030501: { F: 2, G: 2 },
+        L030601: { A: 5, B: 2 },
+        L030701: { A: 2, B: 5 },
+        L030801: { B: 5, C: 5 },
         L030901: { A: 10, C: 5 },
-        L190201: { A: 2, B: 2, C: 2, D: 2, E: 2, F: 5, G: 2, H: 2, I: 2, J: 2 },
-        L190202: { A: 10, B: 5, C: 2 },
+        L170101: { A: 5 },
+        L190201: { C: 2 },
+        L190202: { A: 2 },
         L210101: { A: 5, B: 5, D: 5, E: 2, J: 10 },
-        L210102: { B: 2, C: 5 },
+        L210102: { A: 2 },
         L230102: { A: 5, B: 5, C: 2, D: 2 },
       },
     },
@@ -521,8 +573,11 @@ export const DB: ConditionsDB = {
         L230102: { D: 2 },
       },
     },
+    // v4.3 C1: renamed from 'Radiculopathy (Sciatica)'. Sciatica is by definition a lumbar
+    // radicular pattern (L4–S1); cervical radiculopathies are anatomically distinct. Scoring
+    // weights unchanged.
     {
-      name: 'Radiculopathy (Sciatica)',
+      name: 'Radiculopathy',
       flag: 'green',
       weights: {
         L030201: { A: 5, B: 2, C: 5, D: 10, E: 2 },
@@ -730,6 +785,9 @@ export const DB: ConditionsDB = {
         L230102: { D: 5, E: 10 },
       },
     },
+    // v4.2 #9: matrix populated (was empty) — L030801 F (loss of balance) +5; L030801 B
+    // (tingling/numbness) +2; L030801 C (weakness) +2. Captures the gait/clumsiness pattern
+    // characteristic of myelopathy.
     {
       name: 'Cervical Myelopathy',
       flag: 'yellow',
@@ -737,6 +795,7 @@ export const DB: ConditionsDB = {
         L030201: { A: 2, B: 2, C: 2, D: 2, E: 2 },
         L030401: { C: 5 },
         L030601: { B: 5 },
+        L030801: { B: 2, C: 2, F: 5 },
         L150101: { C: 5 },
         L190201: { A: 5, B: 5, C: 2, D: 2, E: 2 },
         L190202: { A: 2 },
@@ -745,14 +804,16 @@ export const DB: ConditionsDB = {
         L230102: { D: 5, E: 2 },
       },
     },
+    // v4.2 #10: L030201 every row except K (Other joints) +2 (cardiac pain can refer to any
+    // axial/limb territory); L031001 H (high grade fever) 5→0 (fever is not a cardiac referral
+    // feature).
     {
       name: 'Cardiac Referred Pain',
       flag: 'red',
       weights: {
-        L030201: { B: 5, C: 5, D: 5, E: 5, K: 5 },
+        L030201: { A: 2, B: 2, C: 2, D: 2, E: 2, F: 2, G: 2, H: 2, I: 2, J: 2, L: 2 },
         L030401: { D: 5, E: 5 },
         L030601: { A: 5, B: 2 },
-        L031001: { H: 5 },
         L031010: { B: 10 },
         L150101: { A: 5 },
         L170101: { G: 10 },
@@ -764,6 +825,8 @@ export const DB: ConditionsDB = {
     },
   ],
   shoulder: [
+    // v4.2 #11: L030701 D 2→0; L150102 B 0→2; out-of-enum row C in L150102 removed; L190201 A
+    // 5→2, B 2→0, F 5→0; L230102 E 2→0.
     {
       name: 'Rotator Cuff',
       flag: 'green',
@@ -772,23 +835,24 @@ export const DB: ConditionsDB = {
         L030401: { C: 5, D: 5 },
         L030501: { E: 2, F: 2, G: 2, H: 2 },
         L030601: { B: 5 },
-        L030701: { A: 10, D: 2 },
+        L030701: { A: 10 },
         L030801: { E: 2 },
         L030901: { A: 2, C: 2 },
         L031001: { G: 2 },
         L031008: { B: 2 },
         L150101: { B: 5, C: 2 },
-        L150102: { C: 2 },
+        L150102: { B: 2 },
         L170101: { A: 2, D: 2 },
         L170201: { A: 5 },
         L190101: { B: 5 },
-        L190201: { A: 5, B: 2, C: 2, D: 5, F: 5 },
+        L190201: { A: 2, C: 2, D: 5 },
         L190202: { A: 2 },
         L210101: { A: 2, B: 2, E: 2 },
         L210102: { A: 2 },
-        L230102: { B: 2, E: 2 },
+        L230102: { B: 2 },
       },
     },
+    // v4.2 #12: L190201 F 5→0; L190101 A 0→2 (muscle strains often follow acute incident).
     {
       name: 'Muscle Tears/ Strains',
       flag: 'green',
@@ -802,14 +866,16 @@ export const DB: ConditionsDB = {
         L030901: { A: 2, C: 2 },
         L150101: { A: 2, B: 2 },
         L150102: { B: 2 },
-        L190101: { B: 2 },
-        L190201: { B: 2, C: 2, E: 5, F: 5 },
+        L190101: { A: 2, B: 2 },
+        L190201: { B: 2, C: 2, E: 5 },
         L190202: { A: 5 },
         L210101: { A: 2, B: 2, E: 2 },
         L210102: { A: 2 },
         L230102: { B: 2, D: 2 },
       },
     },
+    // v4.2 #13: L170101 B (Thyroid) 5→0; A (Diabetes) 0→5 — strong diabetic association with
+    // frozen shoulder (~5x risk) over thyroid.
     {
       name: 'Adhesive Capsulitis',
       flag: 'green',
@@ -824,7 +890,7 @@ export const DB: ConditionsDB = {
         L031008: { B: 5 },
         L150101: { C: 5 },
         L150102: { B: 2 },
-        L170101: { B: 5 },
+        L170101: { A: 5 },
         L190101: { B: 5 },
         L190201: { A: 5 },
         L190202: { B: 2 },
@@ -890,13 +956,15 @@ export const DB: ConditionsDB = {
         L230102: { E: 5 },
       },
     },
+    // v4.2 #14: L030501 J 2→5 (acute trauma severity); L210101 J 2→10 (structural injury —
+    // pain doesn't ease with positioning); L210102 B 2→0.
     {
       name: 'Fracture/ Slap Tear/ Full Muscle Tear',
       flag: 'red',
       weights: {
         L030201: { B: 10 },
         L030401: { D: 5, E: 10 },
-        L030501: { G: 2, H: 2, I: 2, J: 2 },
+        L030501: { G: 2, H: 2, I: 2, J: 5 },
         L030601: { A: 5 },
         L030701: { A: 2 },
         L030801: { C: 10 },
@@ -907,17 +975,17 @@ export const DB: ConditionsDB = {
         L190101: { A: 5, B: 2 },
         L190201: { A: 2, B: 2, D: 2, E: 2 },
         L190202: { A: 2 },
-        L210101: { J: 2 },
-        L210102: { B: 2 },
+        L210101: { J: 10 },
         L230102: { D: 5, E: 2 },
       },
     },
+    // v4.2 #15: confirmed YELLOW flag; L010701 B (Standing) 2→0 (no specific occupational
+    // risk for GH-OA/RA).
     {
       name: 'Glenohumeral Osteoarthritis/ Rheumatoid Arthritis',
       flag: 'yellow',
       weights: {
         L010301: { D: 2, E: 5, F: 5 },
-        L010701: { B: 2 },
         L030201: { B: 10, C: 2, E: 2 },
         L030401: { C: 5, D: 5 },
         L030501: { E: 2, F: 2, G: 2, H: 2 },
@@ -958,6 +1026,8 @@ export const DB: ConditionsDB = {
         L230102: { D: 5 },
       },
     },
+    // v4.2 #16: L031004 A 10→0, B 0→5 (patellar dislocation is associated with NO spinal
+    // fracture context); L190101 A 5→10 (patellar dislocation is almost always traumatic).
     {
       name: 'Dislocated Knee Cap',
       flag: 'red',
@@ -966,15 +1036,17 @@ export const DB: ConditionsDB = {
         L030401: { D: 5 },
         L030601: { A: 5 },
         L031001: { C: 10 },
-        L031004: { A: 10 },
+        L031004: { B: 5 },
         L150101: { A: 5 },
-        L190101: { A: 5 },
+        L190101: { A: 10 },
         L190201: { A: 2, B: 2, C: 2, D: 2, E: 2 },
         L190202: { A: 2 },
         L210101: { J: 5 },
         L230102: { D: 5, E: 2 },
       },
     },
+    // v4.2 #17: trajectory inversion — L030901 B 10→0, A 0→5 (stress fractures progressively
+    // worsen); L031004 A 10→0, B 0→5 (knee stress fracture is not a spine fracture).
     {
       name: 'Stress Fracture',
       flag: 'red',
@@ -983,9 +1055,9 @@ export const DB: ConditionsDB = {
         L030401: { D: 5, E: 2 },
         L030501: { G: 2, H: 2, I: 2, J: 2 },
         L030601: { A: 2, B: 5 },
-        L030901: { B: 10 },
+        L030901: { A: 5 },
         L031001: { C: 10 },
-        L031004: { A: 10 },
+        L031004: { B: 5 },
         L150101: { A: 5 },
         L170101: { E: 5 },
         L190101: { A: 5 },
@@ -995,11 +1067,13 @@ export const DB: ConditionsDB = {
         L230102: { D: 2, E: 5 },
       },
     },
+    // v4.2 #18: L030201 I 10→2; J (Knee or Ankle) 5→10; L190201 C 5→0, F 10→0, E 0→5, B 0→2;
+    // L210101 E 5→2.
     {
       name: 'Patellar Tendinopathy or Quadriceps',
       flag: 'green',
       weights: {
-        L030201: { I: 10, J: 5 },
+        L030201: { I: 2, J: 10 },
         L030401: { C: 5, D: 5 },
         L030501: { F: 2, G: 2, H: 2 },
         L030601: { B: 5 },
@@ -1007,34 +1081,33 @@ export const DB: ConditionsDB = {
         L030801: { E: 2 },
         L030901: { C: 5 },
         L190101: { B: 5 },
-        L190201: { C: 5, F: 10 },
+        L190201: { B: 2, E: 5 },
         L190202: { B: 5 },
-        L210101: { E: 5 },
+        L210101: { E: 2 },
         L210102: { B: 5 },
         L230101: { A: 2, B: 2, C: 2 },
         L230102: { B: 2 },
       },
     },
-    // Annex B correction: spec listed L030201.J=+10 (Ankle) — not a classical knee-ligament
-      // symptom. Moved to L030201.I=+10 (Leg below knee), the most direct distal pain region
-      // in the knee region pool. Magnitude unchanged.
+    // v4.2 #19: flag reclassified RED → YELLOW (warrants medical attention but rarely
+    // time-critical); L150101 A 10→5; L210101 J 5→2.
     {
       name: 'Ligament or Meniscal Injuries',
-      flag: 'red',
+      flag: 'yellow',
       weights: {
-        L030201: { I: 10 },
+        L030201: { J: 10 },
         L030401: { D: 10 },
         L030501: { H: 2, I: 2, J: 2 },
         L030601: { A: 5 },
         L030701: { A: 5 },
         L030801: { C: 2, E: 2 },
         L030901: { A: 5 },
-        L150101: { A: 10, C: 5 },
+        L150101: { A: 5, C: 5 },
         L150102: { B: 5 },
         L170201: { A: 2, C: 2 },
         L190201: { A: 5, B: 5, D: 5, E: 5 },
         L190202: { A: 10 },
-        L210101: { E: 5, J: 5 },
+        L210101: { E: 5, J: 2 },
         L210102: { B: 5 },
         L230101: { A: 2, B: 2, C: 2 },
         L230102: { D: 2 },

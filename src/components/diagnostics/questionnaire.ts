@@ -59,13 +59,18 @@ export const PAIN_REGIONS = [
   'Hips',
   'Thigh above knee',
   'Leg below knee',
-  'Ankle',
+  // v4.2 #20: 'Ankle' renamed to 'Knee or Ankle' so Knee-region triggers
+  // (H/I/J) are anatomically coherent.
+  'Knee or Ankle',
   'Other joints',
   'No pain',
 ];
 
 export const MED_OPTS = [
-  'Pregnancy',
+  // v4.3 C3: 'Pregnancy' → 'Pregnancy / Post Pregnancy' so users in
+  // either state self-select to row A. Label change only — no scoring
+  // weights affected by this rename.
+  'Pregnancy / Post Pregnancy',
   'Recent surgery',
   'Active fractures',
   'History of cancer',
@@ -87,7 +92,8 @@ export const MED_FOLLOWUPS: Record<
   string,
   { qcCode: keyof PatientData; q: string; o: string[] }
 > = {
-  Pregnancy: {
+  // Key matches the L031001 row-A canonical label (post-v4.3 rename).
+  'Pregnancy / Post Pregnancy': {
     qcCode: 'L031002',
     q: 'Current stage of pregnancy?',
     o: ['Currently pregnant', 'Child is younger than 1 year', 'Child is more than 1 year'],
