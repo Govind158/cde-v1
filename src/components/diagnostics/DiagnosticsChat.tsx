@@ -63,10 +63,31 @@ const nextId = (): string => {
   return `e${entryCounter}`;
 };
 
-export default function DiagnosticsChat() {
+interface DiagnosticsChatProps {
+  /**
+   * Optional pre-filled PatientData. Used when DeepScan is launched as a
+   * follow-up from QuickScan: the caller can pre-set L030201 (primary region)
+   * so the user does not re-pick. The orchestrator still walks the FLOW
+   * starting at `welcome` — pre-filled fields are simply skipped where
+   * appropriate (the chip-question is still rendered with the pre-set value
+   * resolved, so the user can see and confirm the carry-over).
+   *
+   * Per CLAUDE.md inviolable rule 7: never rename PatientData keys. This
+   * prop only INITIALISES; it never renames or reshapes.
+   */
+  initialData?: Partial<PatientData>;
+  /**
+   * Optional callback for the in-app "Back to scan menu" button shown in
+   * the header. Omitted when DeepScan is the only entry (legacy / direct
+   * /app/scan route).
+   */
+  onExit?: () => void;
+}
+
+export default function DiagnosticsChat({ initialData, onExit }: DiagnosticsChatProps = {}) {
   const [state, setState] = useState<OrchestratorState>({
     currentId: 'welcome',
-    data: { L030501: 5 },
+    data: { L030501: 5, ...(initialData ?? {}) },
     entries: [],
     typing: false,
     pendingFollowups: [],
@@ -687,9 +708,10 @@ export default function DiagnosticsChat() {
 
   const handleRestart = useCallback(() => {
     entryCounter = 0;
+    const restartData: PatientData = { L030501: 5, ...(initialData ?? {}) };
     setState({
       currentId: 'welcome',
-      data: { L030501: 5 },
+      data: restartData,
       entries: [],
       typing: false,
       pendingFollowups: [],
@@ -700,9 +722,9 @@ export default function DiagnosticsChat() {
     // Re-emit welcome on next tick
     setTimeout(() => {
       const w = getNode('welcome');
-      if (w) void emitIntroForNode(w, { L030501: 5 });
+      if (w) void emitIntroForNode(w, restartData);
     }, 50);
-  }, [emitIntroForNode]);
+  }, [emitIntroForNode, initialData]);
 
   // ── Initial mount: emit welcome ────────────────────────────────
   useEffect(() => {
@@ -765,6 +787,25 @@ export default function DiagnosticsChat() {
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            {onExit && (
+              <button
+                type="button"
+                onClick={onExit}
+                aria-label="Back to scan menu"
+                style={{
+                  background: 'rgba(255,255,255,0.04)',
+                  border: '1px solid rgba(255,255,255,0.12)',
+                  color: '#cbd5e1',
+                  borderRadius: 8,
+                  padding: '6px 10px',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                ←
+              </button>
+            )}
             <div
               style={{
                 width: 36,
