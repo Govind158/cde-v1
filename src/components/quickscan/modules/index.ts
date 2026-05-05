@@ -3,12 +3,19 @@
  * Adding a new module = importing it here and adding it to the catalogue.
  *
  * Visibility note: a module marked `available: false` shows on the picker
- * with a "Coming soon — clinical review" affordance and is not selectable.
+ * with a "Coming soon" affordance and is not selectable.
  */
 
 import type { QSModule } from '../types';
 import lowBack from './low-back';
 import knee from './knee';
+import discBulge from './disc-bulge';
+import sciatica from './sciatica';
+import spondylosis from './spondylosis';
+import osteoarthritis from './osteoarthritis';
+import osteoporosis from './osteoporosis';
+import rheumatoidArthritis from './rheumatoid-arthritis';
+import rotatorCuff from './rotator-cuff';
 
 export interface QSModuleListing {
   id: string;
@@ -16,121 +23,27 @@ export interface QSModuleListing {
   displayName: string;
   shortDescription: string;
   estimatedMinutes: number;
-  /** Region key for picker grouping & DeepScan handoff. */
   deepScanRegion?: string;
-  /** Active in v1 — only `true` modules are runnable. */
   available: boolean;
-  /** Reference to the module spec when available. */
   spec?: QSModule;
 }
 
 export const LOCATION_MODULES: QSModuleListing[] = [
-  {
-    id: 'low-back',
-    kind: 'location',
-    displayName: 'Low Back',
-    shortDescription: 'Postural / sciatic / chronic low-back patterns',
-    estimatedMinutes: 3,
-    deepScanRegion: 'Lower back',
-    available: true,
-    spec: lowBack,
-  },
-  {
-    id: 'knee',
-    kind: 'location',
-    displayName: 'Knee',
-    shortDescription: 'Activity-related vs degenerative knee patterns',
-    estimatedMinutes: 3,
-    deepScanRegion: 'Knee or Ankle',
-    available: true,
-    spec: knee,
-  },
-  {
-    id: 'neck',
-    kind: 'location',
-    displayName: 'Neck',
-    shortDescription: 'Cervical and tech-neck signals',
-    estimatedMinutes: 3,
-    deepScanRegion: 'Neck',
-    available: false,
-  },
-  {
-    id: 'shoulder',
-    kind: 'location',
-    displayName: 'Shoulder',
-    shortDescription: 'Rotator cuff, frozen shoulder & impingement',
-    estimatedMinutes: 3,
-    deepScanRegion: 'Shoulder',
-    available: false,
-  },
-  {
-    id: 'heel-foot',
-    kind: 'location',
-    displayName: 'Heel & Foot',
-    shortDescription: 'Plantar fasciitis, achilles, forefoot',
-    estimatedMinutes: 3,
-    deepScanRegion: 'Knee or Ankle',
-    available: false,
-  },
+  { id: 'low-back', kind: 'location', displayName: 'Low Back', shortDescription: 'Postural / sciatic / chronic low-back patterns', estimatedMinutes: 3, deepScanRegion: 'Lower back', available: true, spec: lowBack },
+  { id: 'knee', kind: 'location', displayName: 'Knee', shortDescription: 'Activity-related vs degenerative knee patterns', estimatedMinutes: 3, deepScanRegion: 'Knee or Ankle', available: true, spec: knee },
+  { id: 'neck', kind: 'location', displayName: 'Neck', shortDescription: 'Cervical and tech-neck signals', estimatedMinutes: 3, deepScanRegion: 'Neck', available: false },
+  { id: 'shoulder', kind: 'location', displayName: 'Shoulder', shortDescription: 'Rotator cuff, frozen shoulder & impingement', estimatedMinutes: 3, deepScanRegion: 'Shoulder', available: false },
+  { id: 'heel-foot', kind: 'location', displayName: 'Heel & Foot', shortDescription: 'Plantar fasciitis, achilles, forefoot', estimatedMinutes: 3, deepScanRegion: 'Knee or Ankle', available: false },
 ];
 
 export const CONDITION_MODULES: QSModuleListing[] = [
-  {
-    id: 'disc-bulge',
-    kind: 'condition',
-    displayName: 'Disc Bulge',
-    shortDescription: 'Disc herniation / prolapse / annular tear',
-    estimatedMinutes: 3,
-    available: false,
-  },
-  {
-    id: 'sciatica',
-    kind: 'condition',
-    displayName: 'Sciatica',
-    shortDescription: 'Lumbar radicular pain pattern',
-    estimatedMinutes: 3,
-    available: false,
-  },
-  {
-    id: 'spondylosis',
-    kind: 'condition',
-    displayName: 'Spondylosis',
-    shortDescription: 'Cervical / lumbar age-related degeneration',
-    estimatedMinutes: 3,
-    available: false,
-  },
-  {
-    id: 'osteoarthritis',
-    kind: 'condition',
-    displayName: 'Osteoarthritis',
-    shortDescription: 'Joint OA — knee, hip, hand',
-    estimatedMinutes: 3,
-    available: false,
-  },
-  {
-    id: 'osteoporosis',
-    kind: 'condition',
-    displayName: 'Osteoporosis',
-    shortDescription: 'Low bone density risk',
-    estimatedMinutes: 3,
-    available: false,
-  },
-  {
-    id: 'rheumatoid-arthritis',
-    kind: 'condition',
-    displayName: 'Rheumatoid Arthritis',
-    shortDescription: 'Inflammatory joint disease',
-    estimatedMinutes: 3,
-    available: false,
-  },
-  {
-    id: 'rotator-cuff',
-    kind: 'condition',
-    displayName: 'Rotator Cuff Injury',
-    shortDescription: 'Shoulder cuff tendinopathy / tear',
-    estimatedMinutes: 3,
-    available: false,
-  },
+  { id: 'disc-bulge', kind: 'condition', displayName: 'Disc Bulge', shortDescription: 'Disc herniation / prolapse / annular tear', estimatedMinutes: 3, available: true, spec: discBulge },
+  { id: 'sciatica', kind: 'condition', displayName: 'Sciatica', shortDescription: 'Lumbar radicular leg-pain pattern', estimatedMinutes: 3, available: true, spec: sciatica },
+  { id: 'spondylosis', kind: 'condition', displayName: 'Spondylosis', shortDescription: 'Cervical / lumbar age-related degeneration', estimatedMinutes: 3, available: true, spec: spondylosis },
+  { id: 'osteoarthritis', kind: 'condition', displayName: 'Osteoarthritis', shortDescription: 'Joint OA — knee, hip, hand, spine', estimatedMinutes: 3, available: true, spec: osteoarthritis },
+  { id: 'osteoporosis', kind: 'condition', displayName: 'Osteoporosis', shortDescription: 'Low bone density / fragility fracture risk', estimatedMinutes: 3, available: true, spec: osteoporosis },
+  { id: 'rheumatoid-arthritis', kind: 'condition', displayName: 'Rheumatoid Arthritis', shortDescription: 'Inflammatory symmetric small-joint pattern', estimatedMinutes: 3, available: true, spec: rheumatoidArthritis },
+  { id: 'rotator-cuff', kind: 'condition', displayName: 'Rotator Cuff Injury', shortDescription: 'Shoulder cuff tendinopathy / tear', estimatedMinutes: 3, available: true, spec: rotatorCuff },
 ];
 
 export function findModule(id: string): QSModule | undefined {

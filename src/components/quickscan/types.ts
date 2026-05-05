@@ -114,7 +114,7 @@ export interface QSHardFlag {
 // ── Routing per tier ────────────────────────────────────────────────
 export interface QSCTAStub {
   label: string;
-  destination: 'kriya-play' | 'kriya-care' | 'myo-ai';
+  destination: 'kriya-play' | 'kriya-care' | 'myo-ai' | 'specialist';
   /** Sub-target hint, e.g. "muscle-mood" or "walk-more". */
   subProgram?: string;
 }

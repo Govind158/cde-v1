@@ -81,7 +81,7 @@ export function ScanChooser({ onSelect }: Props) {
                 letterSpacing: '0.16em',
               }}
             >
-              Pain Risk
+              Scan
             </span>
           </div>
         </div>
@@ -98,46 +98,34 @@ export function ScanChooser({ onSelect }: Props) {
               letterSpacing: '-0.01em',
             }}
           >
-            How would you like to scan today?
+            Choose your scan
           </h1>
-          <p
-            style={{
-              fontSize: 14,
-              color: '#94a3b8',
-              marginTop: 8,
-              marginBottom: 0,
-              lineHeight: 1.55,
-            }}
-          >
-            Pick the path that fits your time and what you already know about
-            your symptoms. All three are risk-signal tools — not diagnostic.
-          </p>
         </div>
 
         {/* Cards */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 6 }}>
           <ChooserCard
-            badge="QuickScan"
-            title="By Location of Pain"
-            subtitle="“My low back / knee hurts.” Pick where it hurts and answer 6–9 questions."
+            title="By Location"
+            subtitle="Where does it hurt?"
+            example="e.g. low back, knee, neck"
             timeLabel="2–3 min"
             icon={<LocationIcon />}
             onClick={() => onSelect('quickscan-location')}
             accent="#14b8a6"
           />
           <ChooserCard
-            badge="QuickScan"
-            title="By Pain / Condition"
-            subtitle="“I was told I have disc bulge / OA / sciatica.” Stratifies risk for a known condition."
+            title="By Condition"
+            subtitle="A condition you know about."
+            example="e.g. disc bulge, sciatica, OA"
             timeLabel="2–3 min"
             icon={<PillIcon />}
             onClick={() => onSelect('quickscan-condition')}
             accent="#0ea5e9"
           />
           <ChooserCard
-            badge="DeepScan"
-            title="Comprehensive risk assessment"
-            subtitle="A full ~25 question structured assessment. Returns a top-3 condition signal with confidence."
+            title="DeepScan"
+            subtitle="Full risk assessment with top-3 signal."
+            example="not sure where to start"
             timeLabel="10–15 min"
             icon={<DeepIcon />}
             onClick={() => onSelect('deepscan')}
@@ -154,15 +142,9 @@ export function ScanChooser({ onSelect }: Props) {
             color: '#64748b',
             lineHeight: 1.55,
             textAlign: 'center',
-            padding: '10px 14px',
-            borderRadius: 10,
-            background: 'rgba(255,255,255,0.02)',
-            border: '1px dashed rgba(255,255,255,0.06)',
           }}
         >
-          Kriya Scan tools provide self-reported risk signals. They are not a
-          medical diagnosis. Always consult a qualified clinician for clinical
-          assessment, diagnosis, or treatment.
+          Risk-signal tools — not a medical diagnosis.
         </div>
       </div>
     </div>
@@ -173,9 +155,10 @@ export function ScanChooser({ onSelect }: Props) {
 // Card primitive
 
 interface CardProps {
-  badge: string;
   title: string;
   subtitle: string;
+  /** Short illustrative example shown beneath the subtitle. */
+  example?: string;
   timeLabel: string;
   icon: React.ReactNode;
   accent: string;
@@ -184,9 +167,9 @@ interface CardProps {
 }
 
 function ChooserCard({
-  badge,
   title,
   subtitle,
+  example,
   timeLabel,
   icon,
   accent,
@@ -225,23 +208,29 @@ function ChooserCard({
         {icon}
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            flexWrap: 'wrap',
+          }}
+        >
           <span
             style={{
-              fontSize: 10,
+              fontSize: 16,
               fontWeight: 700,
-              color: accent,
-              textTransform: 'uppercase',
-              letterSpacing: '0.14em',
+              color: '#f8fafc',
+              lineHeight: 1.2,
             }}
           >
-            {badge}
+            {title}
           </span>
           <span
             style={{
               fontSize: 10,
               fontWeight: 600,
-              color: '#64748b',
+              color: '#94a3b8',
               padding: '2px 8px',
               borderRadius: 9999,
               background: 'rgba(255,255,255,0.05)',
@@ -254,17 +243,6 @@ function ChooserCard({
         </div>
         <div
           style={{
-            fontSize: 16,
-            fontWeight: 700,
-            color: '#f8fafc',
-            marginTop: 4,
-            lineHeight: 1.3,
-          }}
-        >
-          {title}
-        </div>
-        <div
-          style={{
             fontSize: 13,
             color: '#94a3b8',
             marginTop: 4,
@@ -273,6 +251,20 @@ function ChooserCard({
         >
           {subtitle}
         </div>
+        {example && (
+          <div
+            style={{
+              fontSize: 11,
+              color: accent,
+              marginTop: 4,
+              lineHeight: 1.4,
+              fontWeight: 600,
+              opacity: 0.85,
+            }}
+          >
+            {example}
+          </div>
+        )}
       </div>
       <div
         style={{
