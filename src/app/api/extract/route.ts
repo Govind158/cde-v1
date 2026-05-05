@@ -1,5 +1,5 @@
 /**
- * POST /api/extract  (CDE v4.1)
+ * POST /api/extract  (CDE v4.4)
  *
  * Spec Part I.2 mandate — the extractor has THREE bounded responsibilities:
  *

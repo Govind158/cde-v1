@@ -1,5 +1,5 @@
 /**
- * Kriya CDE — Questionnaire flow (CDE v4.1, Part II).
+ * Kriya CDE — Questionnaire flow (CDE v4.4, Part II).
  *
  * The flow is the SINGLE source of truth for question order and branching.
  * The orchestrator walks nodes; option labels here MUST match the canonical
@@ -7,7 +7,18 @@
  * `option-keys.ts` first, otherwise the answer maps to no row letter and
  * scoring silently sees a zero — a clinical bug.
  *
- * v4.1 changes vs pre-v4.1:
+ * v4.4 changes (this revision):
+ *   - Welcome intro lines rewritten to use spec §"Positioning of Kriya
+ *     DeepScan" Option 1 wording ("Your body speaks every day…") plus the
+ *     spec's prescribed "learn more" explainer paragraph emitted as a
+ *     second intro bubble — single Begin Assessment CTA preserved (no flow
+ *     surgery; spec permits the LLM to word the messaging as long as the
+ *     central theme is preserved).
+ *   - Gender prompt warmed per spec §"Positioning" guidance to be empathetic
+ *     rather than mechanical (spec example: "To personalize your Kriya
+ *     better, tell us a little about yourself…").
+ *
+ * v4.1 changes vs pre-v4.1 (still in effect):
  *   - height-weight paired input split into separate `height` and `weight`
  *     numeric nodes (per spec: open-ended numeric → LLM cohorts to band).
  *     The pair will not break existing PatientData since legacy keys are
@@ -160,21 +171,28 @@ export const FLOW: QuestionNode[] = [
     id: 'welcome',
     kind: 'info',
     intro: [
-      "Hi! I'm Kriya — your Pain Risk Assessment assistant.",
-      'This is a structured risk-discovery tool, not a diagnostic tool. It will give you an indication of likely musculoskeletal patterns and what category of clinical attention may be warranted.',
-      'It takes about 12 minutes (15-25 questions). Your answers are critical, so please ensure you are in a quiet, peaceful environment.',
-      'When ready, tap Begin below.',
+      'Welcome to Kriya.',
+      'Your body speaks every day — through stiffness, fatigue, pain and movement. We help you decode what it is saying today and understand what to do next.',
+      // Spec §"Positioning" prescribes this explainer for users who want to "learn more about how we help you hear your body speak". We emit it inline so the user gets the full context without a separate branch.
+      'Kriya is designed to assess the risk from lifestyle, chronic pain or any other condition to your muscles. It will give you an indication of likely musculoskeletal patterns and guide you on what category of clinical intervention may be warranted.',
+      'In case of any pain, this questionnaire takes about 12 minutes (approximately 18–22 questions) and helps you identify the risk and guide you on next steps.',
+      "Whenever you're ready, tap Begin Assessment below.",
     ],
     next: () => 'gender',
   },
 
   // ── S1 Demographics ──
+  // Gender prompt is intentionally warmer than mechanical per spec §"Positioning"
+  // — wording sample taken verbatim from the spec's gender-rotation examples.
   {
     id: 'gender',
     field: 'L010401',
     kind: 'chips-single',
-    intro: ["Let's start with a short profile."],
-    prompt: 'Gender',
+    intro: [
+      'To personalise your Kriya better, tell us a little about yourself.',
+      'Gender-based differences influence movement, recovery and care — which describes you?',
+    ],
+    prompt: 'Which applies best?',
     options: ['Male', 'Female', 'Transgender', 'Prefer not to say'],
     next: () => 'age',
   },

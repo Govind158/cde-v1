@@ -342,9 +342,16 @@ export function applySafetyGates(input: GateInput): GateOutput {
     const infIdx = scored.findIndex((c) => c.name === infectionName);
     if (infIdx >= 0) {
       const inf = scored[infIdx];
-      if (infIdx >= 3) {
+      // ENGINE-BUG-4 fix: Gate 7 explicitly overrides Gate 4's red-flag
+      // suppression for this specific pattern (the spec is unambiguous —
+      // fever + back/neck "force[s] Infection to shortlist (minimum rank-3)").
+      // We must therefore (a) clear the suppressed flag and (b) place the
+      // condition in the top-3 BEFORE the final rankComparator sort runs,
+      // otherwise the comparator pushes any still-suppressed item below
+      // every non-suppressed candidate and Gate 7 silently no-ops.
+      if (infIdx >= 3 || inf.suppressed) {
         scored.splice(infIdx, 1);
-        scored.splice(2, 0, { ...inf, gateApplied: 'fever+back/neck → infection forced top-3' });
+        scored.splice(2, 0, { ...inf, suppressed: false, gateApplied: 'fever+back/neck → infection forced top-3' });
       } else {
         inf.gateApplied = (inf.gateApplied ? inf.gateApplied + '; ' : '') + 'fever+back/neck → infection forced top-3';
       }
@@ -402,6 +409,23 @@ export function applySafetyGates(input: GateInput): GateOutput {
   // Final sort (suppressed-red goes below non-suppressed).
   scored = scored.slice().sort(rankComparator);
 
+  // ENGINE-BUG-5 fix: Gate 7's "force Infection to top-3" must run AFTER
+  // the final rank-comparator sort, otherwise score-based ordering promotes
+  // any higher-scoring non-red back above the infection candidate.  The
+  // spec is unambiguous ("force Infection to shortlist (minimum rank-3)")
+  // and this is a hard safety gate, so the post-sort splice is correct
+  // even though it produces a list that is no longer strictly score-sorted.
+  if (gates.feverBackInfectionForced && (input.region === 'back' || input.region === 'neck')) {
+    const infectionName = input.region === 'back' ? 'Cancer / Infection' : 'Infection – Herpes/ UTI/ TB/ Others';
+    const infIdx = scored.findIndex((c) => c.name === infectionName);
+    if (infIdx >= 3) {
+      const inf = scored[infIdx];
+      scored.splice(infIdx, 1);
+      scored.splice(2, 0, { ...inf, suppressed: false, gateApplied:
+        (inf.gateApplied ? inf.gateApplied + '; ' : '') + 'fever+back/neck → infection forced top-3 (post-sort)' });
+    }
+  }
+
   return { scored, severity, confidence, banner, gates };
 }
 
@@ -414,6 +438,20 @@ export function applySafetyGates(input: GateInput): GateOutput {
  *   (b) Same activity selected as both aggravator (L190201) and reliever (L210101).
  *       The L190201 ↔ L210101 cross-map below is anatomical-row-level, not fuzzy.
  *   (c) L030801 contains 'None' AND any other symptom selection.
+ *   (d) L030401 = A (mild pain that bothers occasionally) AND L030501 ≥ 7 (severe pain
+ *       on the 1–10 thermometer). v4.4 spec §Part II end-paragraph: "if someone has
+ *       selected option A in L030401 (mild pain), then ideally, the pain score in
+ *       L030501 should not exceed 5 or options F, G, H I and J should ideally not be
+ *       selected." We trip the gate at scale ≥ 7 (rows G–J) — at scale 6 (row F /
+ *       "frequent & fairly strong") the spec marks it borderline ("should not exceed
+ *       5") but reasonable people may differ on a single notch. Triggering at ≥ 7
+ *       follows the spec letter ("F, G, H I and J should ideally not be selected") but
+ *       errs on the side of fewer false-positive contradictions.
+ *   (e) L030701 = A (pain increases with movement / daily activities) AND L190201 = F
+ *       (pain doesn't aggravate). v4.4 spec §Part II: "if someone has selected option
+ *       A in L030701, i.e. symptoms of increase in pain, then for L190201 which is for
+ *       pain aggravating factor, options A to E should be selected and not option F
+ *       which suggests no aggravation in pain."
  */
 function detectContradictions(d: PatientData): string[] {
   const out: string[] = [];
@@ -421,6 +459,21 @@ function detectContradictions(d: PatientData): string[] {
   const a190 = labelToLetter('L190201', d.L190201);
   if (a701 === 'D' && a190 && a190 !== 'F') {
     out.push("L030701='Pain doesn't increase' but L190201 names an aggravator");
+  }
+  // (e) v4.4 spec Part II checks-and-balances paragraph — symmetric pattern to (a).
+  if (a701 === 'A' && a190 === 'F') {
+    out.push(
+      "L030701='Pain increases during movement' but L190201='Pain doesn't aggravate'",
+    );
+  }
+  // (d) Mild description (L030401=A) but severe pain score (L030501 ≥ 7).
+  const a401 = labelToLetter('L030401', d.L030401);
+  if (a401 === 'A' && typeof d.L030501 === 'number' && d.L030501 >= 7) {
+    out.push(
+      "L030401='Mild pain that bothers occasionally' but L030501 pain scale = " +
+        d.L030501 +
+        ' (severe band)',
+    );
   }
   // Activity-level cross-map between L190201 and L210101.
   // Sitting: L190201 row C ↔ L210101 row B. Walking/standing/mobility: L190201 row B ↔
@@ -479,13 +532,20 @@ function emptyGateLog(): SafetyGateLog {
 
 // Public entry point — runEngine
 export function runEngine(d: PatientData): EngineOutput {
-  // Gate 1: No-pain short-circuit. Per spec Part VI, route to Kriya 360 wellness module.
+  // Gate 1: No-pain short-circuit. Per v4.4 spec §Part II branching rule and
+  // §Background §1 ("In case the input from the user indicates no prevalence of
+  // pain and is just an awareness oriented deep dive into MSK health, we should
+  // redirect the user towards Kriya Move activities"), route to Kriya Move so the
+  // user can understand their Muscle Age. (Spec Part VI's gate description still
+  // references the "Kriya 360 wellness evaluation" — when the spec text differs
+  // from itself, we follow the more specific Background §1 directive.)
   if (labelToLetter('L030201', d.L030201) === 'L') {
     const g = emptyGateLog();
     g.noPainShortCircuit = true;
     return {
       noPain: true,
-      action: 'You reported no pain. Routing you to the Kriya 360 wellness module so you can continue building strength, flexibility and balance proactively.',
+      action:
+        'You reported no pain — that is the right baseline. Head over to Kriya Move to understand your Muscle Age and build strength, flexibility and balance proactively. You can also try a QuickScan by Lifestyle if you want to see how your daily patterns are influencing your MSK health.',
       disclaimer: STANDING_CAVEAT,
       engineVersion: ENGINE_VERSION,
       gates: g,

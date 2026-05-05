@@ -14,7 +14,8 @@
  * a prod-clean build with unverified clinical content).
  *
  * IMPORTANT — production go-live checklist:
- *   1. Clinician sign-off on Kriya_CDE_Pain_Risk_Assessment_v4.1.pdf annex.
+ *   1. Clinician sign-off on Kriya_CDE_Pain_Risk_Assessment_v4.4.pdf annex
+ *      (the 22-item sign-off page at the end of the v4.4 spec).
  *   2. FINDING-1 adjudicated (Peripheral Neuropathy +10 weights).
  *   3. Worked-example replay test in CI (Part VIII reconstructability).
  *   4. Persistent audit-log writer wired (Part VIII artefacts).
@@ -51,7 +52,7 @@ export const OPEN_BLOCKERS: Array<{ id: string; severity: 'block' | 'review'; ti
     severity: 'block',
     title: 'Clinician sign-off pending',
     detail:
-      'The 18-item sign-off page in the v4.1 spec annex has not been signed. Until it is, the engine is not approved for patient-facing use.',
+      'The 22-item sign-off page in the v4.4 spec annex has not been signed. Until it is, the engine is not approved for patient-facing use.',
   },
   {
     id: 'B2',

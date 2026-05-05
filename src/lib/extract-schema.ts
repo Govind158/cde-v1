@@ -1,5 +1,5 @@
 /**
- * Kriya CDE — Extraction Schema (CDE v4.1).
+ * Kriya CDE — Extraction Schema (CDE v4.4).
  *
  * Mirrors questionnaire.ts option lists EXACTLY.  The extractor snaps the
  * LLM output to one of these literal strings; anything else is dropped or

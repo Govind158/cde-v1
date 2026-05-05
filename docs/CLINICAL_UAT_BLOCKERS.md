@@ -1,8 +1,8 @@
-# Kriya CDE v4.1 — Clinical UAT Open Items
+# Kriya CDE v4.4 — Clinical UAT Open Items
 
 **Audience:** Clinical reviewers, founders, engineering leads.
-**Build:** CDE-v4.1, stage = `uat`
-**As of:** 2026-04-25
+**Build:** CDE-v4.4, stage = `uat`
+**As of:** 2026-05-05
 
 This document is the single source of truth for what is *known to be incomplete*
 in the Kriya Pain Risk Assessment chatbot during clinical UAT. Each item below
@@ -27,11 +27,11 @@ Each blocker has four parts:
 
 ## B1 — Clinician sign-off pending  🚫 BLOCK
 
-**What.** The v4.1 specification document includes an 18-item sign-off sheet at
+**What.** The v4.4 specification document includes a 22-item sign-off sheet at
 the end (the "Clinician sign-off" page). It asks a qualified clinician to tick
 items like *"Severity buckets align with standard clinical urgency tiers"*,
 *"Per-option weights are proportionate"*, *"Safety gates are sufficient"*, etc.
-None of those 18 items has been signed yet.
+None of those 22 items has been signed yet.
 
 **Why it matters.** The spec itself positions clinician sign-off as the gate to
 production. Without a signature, we are running clinically-weighted scoring
@@ -41,13 +41,13 @@ weights are appropriate. The spec author built that gate in for a reason.
 **What we recommend.**
 - **Owner:** A licensed MSK clinician (preferably the original spec author or
   someone they nominate).
-- **Action:** Walk through the 18-item checklist on pages 117–119 of
-  `Kriya_CDE_Pain_Risk_Assessment_v4.1.pdf`. Tick what is acceptable. For
-  anything not ticked, write the correction inline. We convert each correction
-  into a code change with a named test.
+- **Action:** Walk through the 22-item checklist on the final pages of
+  `Kriya_CDE_Pain_Risk_Assessment_v4.4.pdf` (the "Clinician sign-off" annex).
+  Tick what is acceptable. For anything not ticked, write the correction
+  inline. We convert each correction into a code change with a named test.
 - **Effort:** Half-day clinical review + 1–2 days of engineering follow-up
   per substantive correction.
-- **Acceptance:** All 18 items signed *or* explicitly waived in writing for the
+- **Acceptance:** All 22 items signed *or* explicitly waived in writing for the
   UAT scope.
 
 **Status:** Open. This is the largest blocker — no other clinical work is
@@ -310,7 +310,7 @@ If a clinician or reviewer wants to see exactly how a result was computed:
 - **Scoring algorithm + safety gates:** `src/components/diagnostics/scoring.ts`
 - **Severity rules:** `computeSeverity()` in `scoring.ts`
 - **Question wording:** `src/components/diagnostics/questionnaire.ts`
-- **Spec source of truth:** `Kriya_CDE_Pain_Risk_Assessment_v4.1.pdf`
+- **Spec source of truth:** `Kriya_CDE_Pain_Risk_Assessment_v4.4.pdf`
 - **Open-blockers list shown in-app:** `src/lib/release-stage.ts` (edit
   `OPEN_BLOCKERS` array as items close)
 

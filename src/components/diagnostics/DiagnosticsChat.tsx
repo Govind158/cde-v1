@@ -52,7 +52,44 @@ interface OrchestratorState {
   result: EngineOutput | null;
   /** When non-null, chat input is disabled awaiting Confirm/Edit on this extraction entry. */
   awaitingExtraction: string | null;
+  /**
+   * Stack of (nodeId, dataSnapshot) entries pushed BEFORE every commit so we
+   * can revert one step on a `meta-request: edit_previous`. v4.4 spec
+   * Part I.2 mandate 1: "Revert flow to the previous question. Overwrite the
+   * stored response for that QC with the new input."
+   */
+  history: { nodeId: string; data: PatientData }[];
+  /**
+   * Per-node skip count, used by the critical-question insist-once logic
+   * (v4.4 spec Part I.2 mandate 1: "for critical questions … insist: re-ask
+   * once with a gentle rationale … if the user still declines, route to a
+   * human-in-the-loop handoff"). Keyed by node id (or `FU:<follow-up label>`
+   * for L031002–L031011 follow-ups).
+   */
+  skipCounts: Record<string, number>;
+  /**
+   * True when the user has confirmed end_session — locks the orchestrator so
+   * subsequent free-text input does nothing.
+   */
+  ended: boolean;
 }
+
+/**
+ * Critical question nodes — per v4.4 spec Part I.2 mandate 1, when a user
+ * tries to skip these we must insist once with a gentle rationale before
+ * accepting the skip (and route to human-in-the-loop on a second skip).
+ *
+ * Coverage: L030801 symptom multi-select (covers neuro symptoms B, weakness
+ * C, bowel/bladder D, balance F — every cauda-equina-relevant signal); the
+ * L031001 medical-history multi-select (covers night pain G, fever H); plus
+ * the L031008 (severe-night-pain) and L031009 (high-fever) follow-ups, which
+ * are presented under medical-conditions while activeFollowup is set.
+ */
+const CRITICAL_NODES: ReadonlySet<string> = new Set(['symptoms', 'medical-conditions']);
+const CRITICAL_FOLLOWUPS: ReadonlySet<string> = new Set([
+  'Severe night pain',
+  'High grade fever',
+]);
 
 const TYPING_DELAY = 450;
 const BUBBLE_DELAY = 180;
@@ -94,6 +131,9 @@ export default function DiagnosticsChat({ initialData, onExit }: DiagnosticsChat
     activeFollowup: null,
     result: null,
     awaitingExtraction: null,
+    history: [],
+    skipCounts: {},
+    ended: false,
   });
 
   const mounted = useRef(false);
@@ -183,24 +223,33 @@ export default function DiagnosticsChat({ initialData, onExit }: DiagnosticsChat
   // ── User answer commit ──────────────────────────────────────────
   const commit = useCallback(
     async (label: string, patch: Partial<PatientData>, fromFollowup = false) => {
-      // 1. Echo user bubble + apply patch + extra post-bubbles
-      let newData: PatientData = state.data;
-      setState((s) => {
-        newData = { ...s.data, ...patch };
-        // Derive BMI if height & weight now both present
-        if ((patch.height !== undefined || patch.weight !== undefined) && newData.height && newData.weight) {
-          const hm = parseFloat(newData.height) / 100;
-          if (hm > 0) {
-            const w = parseFloat(newData.weight);
-            newData.bmi = Math.round((w / (hm * hm)) * 10) / 10;
-          }
+      // ENGINE-BUG-6 fix: Compute newData SYNCHRONOUSLY before queuing the
+      // setState callback. The previous "let newData; setState(s => { newData
+      // = ...; })" pattern relied on React running the setState reducer
+      // synchronously inside the dispatch — which is true for legacy unstable
+      // batches but NOT for React 18 automatic batching, where the reducer
+      // runs deferred. The aggravator/relief/past-treatment branches then
+      // computed `node.next(newData)` against a STALE empty patient object,
+      // and the engine silently skipped L190202 / L210102 / L230102 — a
+      // clinical bug that violated spec Annex A rules 6/8/10.
+      // Compute newData up front; React 18 will reconcile the same reference.
+      const newData: PatientData = { ...state.data, ...patch };
+      // Derive BMI if height & weight now both present.
+      if ((patch.height !== undefined || patch.weight !== undefined) && newData.height && newData.weight) {
+        const hm = parseFloat(newData.height) / 100;
+        if (hm > 0) {
+          const w = parseFloat(newData.weight);
+          newData.bmi = Math.round((w / (hm * hm)) * 10) / 10;
         }
-        return {
-          ...s,
-          data: newData,
-          entries: [...s.entries, { id: nextIdStr(), role: 'user', kind: 'text', text: label }],
-        };
-      });
+      }
+      // Push history snapshot BEFORE applying the patch so edit_previous
+      // can revert to the pre-commit state. v4.4 spec Part I.2 mandate 1.
+      setState((s) => ({
+        ...s,
+        data: newData,
+        history: [...s.history, { nodeId: s.currentId, data: s.data }],
+        entries: [...s.entries, { id: nextIdStr(), role: 'user', kind: 'text', text: label }],
+      }));
 
       // 2. If this commit came from a follow-up, handle the next follow-up (if any) OR fall through
       if (fromFollowup) {
@@ -521,6 +570,162 @@ export default function DiagnosticsChat({ initialData, onExit }: DiagnosticsChat
         return;
       }
 
+      // 5b. v4.4 spec Part I.2 mandate 1 — meta-request handling. Flow-control
+      // intents (edit/clarify/repeat/skip/end) take precedence over patches.
+      // The dispatch is inlined here (rather than a separate helper) to avoid
+      // adding another useCallback that would need to be threaded through deps.
+      if (resp.metaRequest) {
+        const kind = resp.metaRequest.kind;
+        const cur = getNode(state.currentId);
+        const fuLabel = state.activeFollowup;
+        const isCritical =
+          CRITICAL_NODES.has(state.currentId) ||
+          (fuLabel ? CRITICAL_FOLLOWUPS.has(fuLabel) : false);
+        const skipKey = fuLabel ? 'FU:' + fuLabel : state.currentId;
+
+        if (kind === 'edit_previous') {
+          if (state.history.length === 0) {
+            await emitBubbles([
+              {
+                id: nextIdStr(),
+                role: 'bot',
+                kind: 'text',
+                text: "There's nothing to revert yet — this is the first question.",
+              },
+            ]);
+            return;
+          }
+          const prev = state.history[state.history.length - 1];
+          setState((s) => ({
+            ...s,
+            currentId: prev.nodeId,
+            data: prev.data,
+            history: s.history.slice(0, -1),
+            awaitingExtraction: null,
+          }));
+          await emitBubbles([
+            {
+              id: nextIdStr(),
+              role: 'bot',
+              kind: 'text',
+              text: 'Going back one step. You can answer that question again — your new response will overwrite the previous one.',
+            },
+          ]);
+          const prevNode = getNode(prev.nodeId);
+          if (prevNode) await emitIntroForNode(prevNode, prev.data);
+          return;
+        }
+
+        if (kind === 'repeat') {
+          if (cur) await emitIntroForNode(cur, state.data);
+          return;
+        }
+
+        if (kind === 'clarify') {
+          // Spec Part I.2 mandate 1: "Re-phrase the question using the pre-scripted
+          // clarification bank (clinician-supplied), or explain the medical term in
+          // layman language." The clarification bank is owned by the clinical team
+          // and is currently a placeholder — we re-phrase generically and re-emit
+          // the question so the user can answer.
+          await emitBubbles([
+            {
+              id: nextIdStr(),
+              role: 'bot',
+              kind: 'text',
+              text: "No problem — let me put it differently. I'm trying to understand more about your situation; tap one of the options below that fits best, or tell me more in your own words and I'll match it up.",
+            },
+          ]);
+          if (cur) await emitIntroForNode(cur, state.data);
+          return;
+        }
+
+        if (kind === 'skip') {
+          const count = (state.skipCounts[skipKey] ?? 0) + 1;
+          if (isCritical && count === 1) {
+            setState((s) => ({ ...s, skipCounts: { ...s.skipCounts, [skipKey]: count } }));
+            await emitBubbles([
+              {
+                id: nextIdStr(),
+                role: 'bot',
+                kind: 'text',
+                text: 'I hear you. This particular question is one of the few that helps me understand whether you need urgent review — could you take another look and pick whichever option fits best?',
+              },
+            ]);
+            if (cur) await emitIntroForNode(cur, state.data);
+            return;
+          }
+          if (isCritical && count >= 2) {
+            setState((s) => ({
+              ...s,
+              skipCounts: { ...s.skipCounts, [skipKey]: count },
+              ended: true,
+            }));
+            await emitBubbles([
+              {
+                id: nextIdStr(),
+                role: 'bot',
+                kind: 'text',
+                text: "That's okay — because you'd rather not answer this one and it's an important safety question, the safest path is to pause the assessment here and have you speak with a clinician directly. Please book a consultation with your physician or use the urgent-care pathway in your region.",
+              },
+            ]);
+            return;
+          }
+          // Non-critical skip — record decline and advance.
+          setState((s) => ({ ...s, skipCounts: { ...s.skipCounts, [skipKey]: count } }));
+          await emitBubbles([
+            {
+              id: nextIdStr(),
+              role: 'bot',
+              kind: 'text',
+              text: 'Skipped — noted. Moving on.',
+            },
+          ]);
+          if (cur && cur.next) {
+            const nxt = cur.next(state.data);
+            if (nxt) await advanceTo(nxt, state.data);
+          }
+          return;
+        }
+
+        if (kind === 'end_session') {
+          const hasRegion =
+            !!state.data.L030201 && state.data.L030201 !== 'No pain';
+          const hasScale = typeof state.data.L030501 === 'number';
+          if (hasRegion && hasScale) {
+            await emitBubbles([
+              {
+                id: nextIdStr(),
+                role: 'bot',
+                kind: 'text',
+                text: "Got it — wrapping up early with a partial summary. I'll only show what we have so far; for a complete risk indication, please come back and finish the questionnaire.",
+              },
+            ]);
+            const out = runEngine(state.data);
+            setState((s) => ({
+              ...s,
+              ended: true,
+              result: out,
+              currentId: 'results',
+              entries: [
+                ...s.entries,
+                { id: nextIdStr(), role: 'bot', kind: 'result', result: out },
+              ],
+            }));
+          } else {
+            setState((s) => ({ ...s, ended: true }));
+            await emitBubbles([
+              {
+                id: nextIdStr(),
+                role: 'bot',
+                kind: 'text',
+                text: "Pausing the session here. I don't have enough information yet to give a meaningful risk indication, so come back any time and pick up where we left off — your answers so far are saved in this conversation.",
+              },
+            ]);
+          }
+          return;
+        }
+      }
+
       // 6. Build extraction-summary entry
       const labelList = Object.entries(resp.labels).map(([key, label]) => ({ key, label }));
       const summaryId = nextIdStr();
@@ -718,6 +923,9 @@ export default function DiagnosticsChat({ initialData, onExit }: DiagnosticsChat
       activeFollowup: null,
       result: null,
       awaitingExtraction: null,
+      history: [],
+      skipCounts: {},
+      ended: false,
     });
     // Re-emit welcome on next tick
     setTimeout(() => {
@@ -906,7 +1114,7 @@ export default function DiagnosticsChat({ initialData, onExit }: DiagnosticsChat
           onSubmitFreeText={(t) => void handleFreeText(t)}
           onAdvance={handleAdvance}
           onRestart={handleRestart}
-          disabled={state.awaitingExtraction !== null}
+          disabled={state.awaitingExtraction !== null || state.ended}
         />
       </div>
     </div>
@@ -968,7 +1176,6 @@ function findNextUnansweredFrom(startId: string, data: PatientData): string {
     const n = getNode(currentId);
     if (!n) break;
     if (n.kind === 'processing' || n.kind === 'results') return currentId;
-
     if (n.field) {
       const v = (data as Record<string, unknown>)[n.field];
       const isEmpty =
@@ -977,23 +1184,15 @@ function findNextUnansweredFrom(startId: string, data: PatientData): string {
         v === '' ||
         (Array.isArray(v) && v.length === 0);
       if (isEmpty) return currentId;
-      // Field already populated — skip forward
       currentId = n.next(data);
       continue;
     }
-
-    // Field-less node (info, welcome) — stop here so intro/Begin can play
     return currentId;
   }
   return 'processing';
 }
 
-/**
- * Engine call — deterministic CDE v4.1 in scoring.ts owns all clinical
- * reasoning (region triggers, scoring, severity, confidence, safety gates,
- * standing caveat).  This wrapper exists only so the orchestrator's
- * pre-existing call sites keep working.
- */
 function runEngine(d: PatientData): EngineOutput {
   return cdeRunEngine(d);
 }
+   
