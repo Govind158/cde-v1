@@ -368,24 +368,19 @@ export function applySafetyGates(input: GateInput): GateOutput {
   // Spec text: "If the user's free-text extraction contradicts a chip answer (e.g. activity
   // listed as both aggravator and reliever), route to human-in-the-loop review instead of
   // scoring." We DO NOT halt scoring — the deterministic ranking still runs — but we record
-  // the contradiction in the audit log, downgrade confidence, and surface a clinician-review
-  // banner so the result is never presented as decisive.
+  // the contradiction in the audit log and downgrade confidence.
+  //
+  // UX policy (2026-05): contradictions are surfaced to the user at the moment of selection
+  // via an inline conversational note (see DiagnosticsChat.commit), not as a result-card
+  // banner. The L-coded audit text stays in `gates.contradictions` for clinician review;
+  // the result card no longer carries an URGENT banner for these soft conflicts.
   const contradictions = detectContradictions(input.data);
   if (contradictions.length > 0) {
     gates.contradictionEscalated = true;
-    gates.contradictions = contradictions;
+    gates.contradictions = contradictions.map((c) => c.auditText);
     // Downgrade one step (per spec mandate for missing/skipped data — same downgrade policy).
     if (confidence === 'High') confidence = 'Moderate';
     else if (confidence === 'Moderate') confidence = 'Low';
-    if (!banner) {
-      banner = {
-        tone: 'urgent',
-        text:
-          'Some of your responses appeared to conflict (' + contradictions.join('; ') +
-          '). The deterministic ranking is still shown for reference, but please review with ' +
-          'a clinician — answers that point in opposite directions can change the recommendation.',
-      };
-    }
   }
 
   // Gate 9: Red-flag top-1 → severity floor (defensive medicine; MISSING-GATE-2 fix).
@@ -453,27 +448,62 @@ export function applySafetyGates(input: GateInput): GateOutput {
  *       pain aggravating factor, options A to E should be selected and not option F
  *       which suggests no aggravation in pain."
  */
-function detectContradictions(d: PatientData): string[] {
-  const out: string[] = [];
+/**
+ * Stable identifier for each contradiction pattern. Used by callers
+ * (DiagnosticsChat) to diff old-vs-new contradictions across commits so that
+ * each conflict is surfaced exactly once per appearance.
+ */
+export type ContradictionId =
+  | 'no-increase-but-aggravator'
+  | 'increase-but-no-aggravator'
+  | 'mild-but-severe-scale'
+  | 'aggravator-equals-reliever'
+  | 'symptoms-none-with-others';
+
+export interface Contradiction {
+  id: ContradictionId;
+  /** L-coded audit text — preserved verbatim in `gates.contradictions` for the clinician log. */
+  auditText: string;
+  /** Plain-language conversational note for the user. NO L-codes. */
+  userText: string;
+}
+
+export function detectContradictions(d: PatientData): Contradiction[] {
+  const out: Contradiction[] = [];
   const a701 = labelToLetter('L030701', d.L030701);
   const a190 = labelToLetter('L190201', d.L190201);
   if (a701 === 'D' && a190 && a190 !== 'F') {
-    out.push("L030701='Pain doesn't increase' but L190201 names an aggravator");
+    out.push({
+      id: 'no-increase-but-aggravator',
+      auditText: "L030701='Pain doesn't increase' but L190201 names an aggravator",
+      userText:
+        "Earlier you mentioned that your pain doesn't get worse with activity, but here you've picked an activity that aggravates it. Both can be true, but it's worth a quick second look — would you like to revisit either answer?",
+    });
   }
   // (e) v4.4 spec Part II checks-and-balances paragraph — symmetric pattern to (a).
   if (a701 === 'A' && a190 === 'F') {
-    out.push(
-      "L030701='Pain increases during movement' but L190201='Pain doesn't aggravate'",
-    );
+    out.push({
+      id: 'increase-but-no-aggravator',
+      auditText:
+        "L030701='Pain increases during movement' but L190201='Pain doesn't aggravate'",
+      userText:
+        "A small check — earlier you said your pain increases with movement, and now you've picked that nothing in particular aggravates it. If something does set it off (even a little), it'll help the assessment if you go back and update that answer.",
+    });
   }
   // (d) Mild description (L030401=A) but severe pain score (L030501 ≥ 7).
   const a401 = labelToLetter('L030401', d.L030401);
   if (a401 === 'A' && typeof d.L030501 === 'number' && d.L030501 >= 7) {
-    out.push(
-      "L030401='Mild pain that bothers occasionally' but L030501 pain scale = " +
+    out.push({
+      id: 'mild-but-severe-scale',
+      auditText:
+        "L030401='Mild pain that bothers occasionally' but L030501 pain scale = " +
         d.L030501 +
         ' (severe band)',
-    );
+      userText:
+        "Earlier you described your pain as mild and occasional, but you've now rated it " +
+        d.L030501 +
+        "/10 — that's in the severe range. If the pain is usually mild but sometimes spikes higher, that's worth knowing too. You can revisit either answer to make them line up.",
+    });
   }
   // Activity-level cross-map between L190201 and L210101.
   // Sitting: L190201 row C ↔ L210101 row B. Walking/standing/mobility: L190201 row B ↔
@@ -488,14 +518,28 @@ function detectContradictions(d: PatientData): string[] {
   if (a190 && a210) {
     for (const [agg, rel, label] of cross) {
       if (a190 === agg && a210 === rel) {
-        out.push('activity \u201c' + label + '\u201d selected as both aggravator and reliever');
+        out.push({
+          id: 'aggravator-equals-reliever',
+          auditText:
+            'activity \u201c' + label + '\u201d selected as both aggravator and reliever',
+          userText:
+            'You\u2019ve marked \u201c' +
+            label +
+            '\u201d as both something that aggravates your pain and something that relieves it. That can happen \u2014 small amounts help, larger amounts hurt \u2014 but if one fits better than the other, do go back and pick the more accurate one.',
+        });
       }
     }
   }
   // Symptoms-list contradiction: 'None' selected together with any other symptom.
   const sym = (d.L030801 ?? []).map((s) => labelToLetter('L030801', s)).filter(Boolean) as RowLetter[];
   if (sym.includes('G') && sym.length > 1) {
-    out.push("L030801 list includes 'None' together with at least one other symptom");
+    out.push({
+      id: 'symptoms-none-with-others',
+      auditText:
+        "L030801 list includes 'None' together with at least one other symptom",
+      userText:
+        'On the symptoms question, you picked “None” alongside other symptoms. If none apply, deselect the others; if some do apply, deselect “None.”',
+    });
   }
   return out;
 }

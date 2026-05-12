@@ -20,6 +20,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { GC, Btn, Chip, Lbl, KI } from './primitives';
 import { severityColor, flagColor, flagLabel } from './scoring';
+import { statsForTop3, type ConditionStat } from './condition-stats';
 import type { ChatEntry, DiagnosticResult, NoPainResult, PatientData } from './types';
 import { EXTRACT_FIELDS, type ExtractField } from '@/lib/extract-schema';
 
@@ -455,6 +456,15 @@ function ResultCard({ result }: { result: DiagnosticResult | NoPainResult }) {
         gap: 10,
       }}
     >
+      {/*
+        URGENT contradiction banner removed (2026-05). Soft contradictions are
+        now surfaced as inline conversational notes at the moment of selection
+        (see DiagnosticsChat.commit). The L-coded audit text still lives on
+        result.gates.contradictions for the clinician audit log. Emergency /
+        urgent banners triggered by *other* gates (e.g. cauda equina) are not
+        affected — those still come through scoring.ts as result.banner, but
+        the soft-contradiction path can no longer set one.
+      */}
       {r.banner ? (
         <GC
           style={{
@@ -480,59 +490,38 @@ function ResultCard({ result }: { result: DiagnosticResult | NoPainResult }) {
           </div>
         </GC>
       ) : null}
+      {/*
+        Confidence tile removed (2026-05). It was not actionable for the user
+        and 'Low' / 'Rank-gap' was confusing. The internal confidence value is
+        still computed in scoring.ts and persisted on r.confidence for the
+        audit log and any future clinician-facing surface.
+      */}
       <GC v="glow" style={{ padding: 16 }}>
         <Lbl>Pain Risk Assessment</Lbl>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          <GC style={{ padding: '12px 14px', border: `1px solid ${sevCol}33` }}>
-            <div
-              style={{
-                fontSize: 10,
-                fontWeight: 600,
-                color: sevCol,
-                textTransform: 'uppercase',
-                letterSpacing: '0.12em',
-              }}
-            >
-              Severity
-            </div>
-            <div
-              style={{
-                fontSize: 22,
-                fontWeight: 800,
-                color: sevCol,
-                lineHeight: 1.1,
-                marginTop: 2,
-              }}
-            >
-              {sv.bucket}
-            </div>
-          </GC>
-          <GC style={{ padding: '12px 14px', border: '1px solid rgba(20,184,166,0.30)' }}>
-            <div
-              style={{
-                fontSize: 10,
-                fontWeight: 600,
-                color: '#14b8a6',
-                textTransform: 'uppercase',
-                letterSpacing: '0.12em',
-              }}
-            >
-              Confidence
-            </div>
-            <div
-              style={{
-                fontSize: 22,
-                fontWeight: 800,
-                color: '#14b8a6',
-                lineHeight: 1.1,
-                marginTop: 2,
-              }}
-            >
-              {r.confidence}
-            </div>
-            <div style={{ fontSize: 10, color: '#64748b', marginTop: 2 }}>Rank-gap</div>
-          </GC>
-        </div>
+        <GC style={{ padding: '14px 16px', border: `1px solid ${sevCol}33` }}>
+          <div
+            style={{
+              fontSize: 10,
+              fontWeight: 600,
+              color: sevCol,
+              textTransform: 'uppercase',
+              letterSpacing: '0.12em',
+            }}
+          >
+            Severity
+          </div>
+          <div
+            style={{
+              fontSize: 26,
+              fontWeight: 800,
+              color: sevCol,
+              lineHeight: 1.1,
+              marginTop: 4,
+            }}
+          >
+            {sv.bucket}
+          </div>
+        </GC>
       </GC>
 
       <GC style={{ padding: 16 }}>
@@ -595,6 +584,8 @@ function ResultCard({ result }: { result: DiagnosticResult | NoPainResult }) {
         })}
       </GC>
 
+      <PopulationContextCard result={r} />
+
       <GC style={{ padding: '14px 16px', border: '1px solid rgba(34,211,238,0.25)' }}>
         <div
           style={{
@@ -623,6 +614,91 @@ function ResultCard({ result }: { result: DiagnosticResult | NoPainResult }) {
         </p>
       </GC>
     </div>
+  );
+}
+
+/**
+ * Population Context card — renders a peer-reviewed prevalence/burden stat
+ * for each of the user's top-3 conditions, filtered by age/gender. Sourced
+ * from condition-stats.ts. Renders NOTHING when no condition in the top-3
+ * has a matching stat (no fabrication — see condition-stats.ts header rule).
+ *
+ * Per the user direction (2026-05): placed immediately after the Top 3
+ * Probable Conditions card and before the Recommended Action card.
+ */
+function PopulationContextCard({ result }: { result: DiagnosticResult }) {
+  const names = result.top_3.map((c) => c.name);
+  const stats = statsForTop3(names, result.user);
+  // Pair each condition with its (possibly null) stat; filter to those that
+  // actually have one. If nothing matches, render nothing.
+  const rows: { name: string; stat: ConditionStat }[] = [];
+  for (let i = 0; i < names.length; i += 1) {
+    const s = stats[i];
+    if (s) rows.push({ name: names[i], stat: s });
+  }
+  if (rows.length === 0) return null;
+  return (
+    <GC
+      style={{
+        padding: '14px 16px',
+        border: '1px solid rgba(168,85,247,0.25)',
+        background: 'rgba(168,85,247,0.05)',
+      }}
+    >
+      <div
+        style={{
+          fontSize: 11,
+          fontWeight: 600,
+          color: '#c4b5fd',
+          textTransform: 'uppercase',
+          letterSpacing: '0.12em',
+          marginBottom: 10,
+        }}
+      >
+        You’re not alone — what the research says
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {rows.map((row, i) => (
+          <div
+            key={row.name}
+            style={{
+              paddingTop: i ? 10 : 0,
+              borderTop: i ? '1px solid rgba(255,255,255,0.05)' : 'none',
+            }}
+          >
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 700,
+                color: '#a78bfa',
+                marginBottom: 4,
+                letterSpacing: '0.04em',
+              }}
+            >
+              {row.name}
+            </div>
+            <div style={{ fontSize: 13, color: '#e2e8f0', lineHeight: 1.6 }}>
+              {row.stat.text}
+            </div>
+            <a
+              href={row.stat.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: 'inline-block',
+                marginTop: 6,
+                fontSize: 10,
+                color: '#94a3b8',
+                textDecoration: 'underline',
+                lineHeight: 1.4,
+              }}
+            >
+              Source: {row.stat.source} ↗
+            </a>
+          </div>
+        ))}
+      </div>
+    </GC>
   );
 }
 

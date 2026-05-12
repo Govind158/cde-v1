@@ -28,7 +28,13 @@ import { ChatInput } from './ChatInput';
 import { MED_FOLLOWUPS, getNode } from './questionnaire';
 import type { QuestionNode } from './questionnaire';
 import { bmiInsight, findActivityInsight, heightInsight } from './insights';
-import { runEngine as cdeRunEngine, computeSeverity, regionFromPrimary } from './scoring';
+import {
+  runEngine as cdeRunEngine,
+  computeSeverity,
+  detectContradictions,
+  regionFromPrimary,
+} from './scoring';
+import type { ContradictionId } from './scoring';
 import { DB } from './conditions-db';
 import type {
   ChatEntry,
@@ -262,6 +268,29 @@ export default function DiagnosticsChat({ initialData, onExit }: DiagnosticsChat
       if (!node) return;
 
       const sideEffects: ChatEntry[] = [];
+
+      // ── Selection-time contradiction notes ────────────────────────────
+      // Diff contradictions on (old data) vs (newData). For each contradiction
+      // that NEWLY appeared as a result of this commit, emit a soft amber note
+      // bubble so the user can self-correct in-flow. This replaces the
+      // result-card URGENT banner (removed 2026-05) — the audit log still
+      // captures the L-coded text via gates.contradictions in scoring.ts.
+      const oldConflictIds = new Set<ContradictionId>(
+        detectContradictions(state.data).map((c) => c.id),
+      );
+      const newConflicts = detectContradictions(newData).filter(
+        (c) => !oldConflictIds.has(c.id),
+      );
+      for (const c of newConflicts) {
+        sideEffects.push({
+          id: nextIdStr(),
+          role: 'bot',
+          kind: 'insight',
+          emoji: '💭',
+          color: '#f59e0b',
+          text: c.userText,
+        });
+      }
 
       // Height/weight — show heightInsight + BMI insight
       if (node.id === 'height-weight' && newData.height && newData.L010401) {
@@ -1208,4 +1237,3 @@ function findNextUnansweredFrom(startId: string, data: PatientData): string {
 function runEngine(d: PatientData): EngineOutput {
   return cdeRunEngine(d);
 }
-   
