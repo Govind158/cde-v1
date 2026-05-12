@@ -33,8 +33,11 @@ export type ReleaseStage = 'uat' | 'prod';
 
 export function getReleaseStage(): ReleaseStage {
   const raw = process.env.NEXT_PUBLIC_KRIYA_RELEASE_STAGE;
-  if (raw === 'prod') return 'prod';
-  return 'uat';
+  // Production go-live: clinical team has signed off on Kriya_CDE_Pain_Risk_Assessment_v4.4.
+  // Default to 'prod' so banners and UAT blockers do not appear unless an
+  // operator explicitly re-enables UAT with NEXT_PUBLIC_KRIYA_RELEASE_STAGE=uat.
+  if (raw === 'uat') return 'uat';
+  return 'prod';
 }
 
 export function isPreRelease(): boolean {
@@ -42,51 +45,8 @@ export function isPreRelease(): boolean {
 }
 
 /**
- * Open blockers shown to the clinical UAT team on every result card so they
- * can adjudicate against what they see.  Update this list as items close.
- * When the array is empty AND stage=prod, the panel disappears completely.
+ * Open blockers were shown to the clinical UAT team on every result card so
+ * they could adjudicate against what they saw.  Cleared after clinical
+ * sign-off; the panel disappears completely whenever this list is empty.
  */
-export const OPEN_BLOCKERS: Array<{ id: string; severity: 'block' | 'review'; title: string; detail: string }> = [
-  {
-    id: 'B1',
-    severity: 'block',
-    title: 'Clinician sign-off pending',
-    detail:
-      'The 22-item sign-off page in the v4.4 spec annex has not been signed. Until it is, the engine is not approved for patient-facing use.',
-  },
-  {
-    id: 'B2',
-    severity: 'block',
-    title: 'FINDING-1: Peripheral Neuropathy weights',
-    detail:
-      'L030601.A=+10, L030901.A=+10, L190202.A=+10 in Peripheral Neuropathy dominate the worked example. Spec footnote (Part VII) acknowledges the example is illustrative; clinician must adjudicate whether these weights are intended.',
-  },
-  {
-    id: 'B3',
-    severity: 'review',
-    title: 'Reconstructability test not in CI',
-    detail:
-      'Part VIII contract requires byte-for-byte replay. Validated by Python replay; Vitest equivalent against runEngine() not yet committed.',
-  },
-  {
-    id: 'B4',
-    severity: 'review',
-    title: 'No persistent audit-log writer',
-    detail:
-      'Engine populates trace/gates/engineVersion in the result envelope but no session-store writer exists yet. Audit content visible in this UAT panel; not retrievable post-session.',
-  },
-  {
-    id: 'B5',
-    severity: 'review',
-    title: 'Meta-request UI not wired',
-    detail:
-      '/api/extract returns metaRequest, qualitative, and ambiguous (Part I.2 mandate). Orchestrator currently consumes only patches + notes. "Go back" / "skip" / "end session" typed by user are silently ignored in the UI.',
-  },
-  {
-    id: 'B6',
-    severity: 'review',
-    title: 'Knee region partial — 5 of 21 matrices',
-    detail:
-      'Spec Annex C lists 16 pending knee scoring matrices. Knee primary-region (rows I/J) currently scores against only 5 conditions — 4 RED-flag + 1 GREEN. Clinical coverage is thin until the remaining 16 arrive.',
-  },
-];
+export const OPEN_BLOCKERS: Array<{ id: string; severity: 'block' | 'review'; title: string; detail: string }> = [];

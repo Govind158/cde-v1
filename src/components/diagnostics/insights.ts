@@ -1,5 +1,5 @@
 /**
- * Kriya Pain Diagnostics — Humanized Insight Messages
+ * Kriya CDE — Humanized Insight Messages
  * Ported verbatim from App.jsx (heightInsight, bmiInsight, ACTIVITY_INSIGHTS).
  */
 

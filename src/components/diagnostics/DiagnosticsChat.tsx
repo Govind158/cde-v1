@@ -1,5 +1,5 @@
 /**
- * Kriya Pain Diagnostics — Chat Orchestrator
+ * Kriya CDE — DeepScan Chat Orchestrator
  *
  * Walks the questionnaire as a chat. On mount it emits the welcome node's
  * intro bubbles and shows the Begin button. For every question node:
@@ -752,7 +752,10 @@ export default function DiagnosticsChat({ initialData, onExit }: DiagnosticsChat
   );
 
   const handleConfirmExtraction = useCallback(
-    async (entryId: string) => {
+    async (
+      entryId: string,
+      editedPatches?: Partial<PatientData> & { height?: string; weight?: string },
+    ) => {
       // Find the summary entry
       const entry = state.entries.find(
         (en) => en.id === entryId && en.role === 'bot' && en.kind === 'extraction-summary',
@@ -760,7 +763,11 @@ export default function DiagnosticsChat({ initialData, onExit }: DiagnosticsChat
       if (!entry || entry.role !== 'bot' || entry.kind !== 'extraction-summary') return;
       if (entry.resolved) return;
 
-      const patches = entry.patches;
+      // Prefer the (possibly) edited patches the user adjusted in the bubble.
+      // Fall back to the LLM's original patches if the bubble couldn't compute
+      // edits (defensive — keeps prior behaviour intact when called without
+      // an `editedPatches` argument).
+      const patches = editedPatches ?? entry.patches;
 
       // Determine whether the CURRENT node's field was extracted — if so,
       // its chips-question bubble (if any) should be marked resolved.
@@ -955,12 +962,12 @@ export default function DiagnosticsChat({ initialData, onExit }: DiagnosticsChat
   return (
     <div
       style={{
-        minHeight: '100vh',
+        minHeight: '100dvh',
         background:
           'radial-gradient(ellipse 80% 60% at 50% -10%, rgba(20,184,166,0.12) 0%, transparent 60%), #020617',
         display: 'flex',
         justifyContent: 'center',
-        padding: 16,
+        padding: 8,
         boxSizing: 'border-box',
         fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
       }}
@@ -978,7 +985,11 @@ export default function DiagnosticsChat({ initialData, onExit }: DiagnosticsChat
           WebkitBackdropFilter: 'blur(20px)',
           display: 'flex',
           flexDirection: 'column',
-          height: '95vh',
+          // Use dynamic viewport units so mobile browser chrome (URL bar) does
+          // not push the footer (Begin Assessment / structured input) below
+          // the visible viewport.  100dvh shrinks when the URL bar appears.
+          height: 'calc(100dvh - 16px)',
+          maxHeight: 'calc(100dvh - 16px)',
           overflow: 'hidden',
         }}
       >
@@ -1075,7 +1086,7 @@ export default function DiagnosticsChat({ initialData, onExit }: DiagnosticsChat
                   marginTop: 4,
                 }}
               >
-                Pain Diagnostics
+                DeepScan
               </div>
             </div>
           </div>
@@ -1098,7 +1109,9 @@ export default function DiagnosticsChat({ initialData, onExit }: DiagnosticsChat
         <ChatTranscript
           entries={state.entries}
           typing={state.typing}
-          onConfirmExtraction={(id) => void handleConfirmExtraction(id)}
+          onConfirmExtraction={(id, editedPatches) =>
+            void handleConfirmExtraction(id, editedPatches)
+          }
           onEditExtraction={(id) => void handleEditExtraction(id)}
           onChipsAnswer={handleChipsAnswer}
           onChipsAnswerMulti={handleChipsAnswerMulti}

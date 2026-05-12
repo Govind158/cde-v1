@@ -171,12 +171,8 @@ export const FLOW: QuestionNode[] = [
     id: 'welcome',
     kind: 'info',
     intro: [
-      'Welcome to Kriya.',
-      'Your body speaks every day — through stiffness, fatigue, pain and movement. We help you decode what it is saying today and understand what to do next.',
-      // Spec §"Positioning" prescribes this explainer for users who want to "learn more about how we help you hear your body speak". We emit it inline so the user gets the full context without a separate branch.
-      'Kriya is designed to assess the risk from lifestyle, chronic pain or any other condition to your muscles. It will give you an indication of likely musculoskeletal patterns and guide you on what category of clinical intervention may be warranted.',
-      'In case of any pain, this questionnaire takes about 12 minutes (approximately 18–22 questions) and helps you identify the risk and guide you on next steps.',
-      "Whenever you're ready, tap Begin Assessment below.",
+      "Welcome to Kriya — let's understand what your body is telling you.",
+      'About 18–22 quick questions (~12 mins). Tap Begin Assessment to start.',
     ],
     next: () => 'gender',
   },

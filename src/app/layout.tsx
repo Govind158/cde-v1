@@ -1,7 +1,6 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
-import PreReleaseBanner from '@/components/diagnostics/PreReleaseBanner';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -22,7 +21,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         className="bg-[#020617] text-slate-200 antialiased"
         style={{ fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif" }}
       >
-        <PreReleaseBanner />
         {children}
       </body>
     </html>

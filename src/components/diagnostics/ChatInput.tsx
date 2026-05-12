@@ -1,5 +1,5 @@
 /**
- * Kriya Pain Diagnostics — Chat Input Panel
+ * Kriya CDE — DeepScan Chat Input Panel
  *
  * Contextual input area. The orchestrator selects which kind of input
  * to render (chips-single / chips-multi / range / number / height-weight /
@@ -132,9 +132,28 @@ export function ChatInput(props: Props) {
   }
 
   if (kind === 'info') {
+    // Welcome footer is the only CTA on this screen — anchor it to the bottom
+    // of the card with a heavier glow so it reads as a floating, always-visible
+    // action regardless of how the intro bubbles flow above.
     return (
-      <div style={{ ...FOOTER_WRAP, textAlign: 'center' }}>
-        <Btn onClick={onAdvance} disabled={disabled}>
+      <div
+        style={{
+          ...FOOTER_WRAP,
+          textAlign: 'center',
+          position: 'sticky',
+          bottom: 0,
+          padding: '16px 16px calc(16px + env(safe-area-inset-bottom, 0px))',
+          background:
+            'linear-gradient(180deg, rgba(2,6,23,0.0) 0%, rgba(2,6,23,0.85) 35%, rgba(2,6,23,0.95) 100%)',
+          borderTop: '1px solid rgba(20,184,166,0.18)',
+          boxShadow: '0 -8px 24px rgba(2,6,23,0.55)',
+        }}
+      >
+        <Btn
+          onClick={onAdvance}
+          disabled={disabled}
+          style={{ width: '100%', justifyContent: 'center' }}
+        >
           Begin Assessment →
         </Btn>
       </div>

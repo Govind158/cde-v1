@@ -1,5 +1,5 @@
 /**
- * Kriya Pain Diagnostics — UI Primitives
+ * Kriya CDE — UI Primitives
  * Design system: Kriya.care landing design language (clinical teal + dark glass).
  *
  * Primary accent:  #14b8a6 (teal-500)   — CTAs, labels, glow borders, badges

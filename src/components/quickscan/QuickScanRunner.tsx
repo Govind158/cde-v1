@@ -259,12 +259,12 @@ export default function QuickScanRunner({
   return (
     <div
       style={{
-        minHeight: '100vh',
+        minHeight: '100dvh',
         background:
           'radial-gradient(ellipse 80% 60% at 50% -10%, rgba(20,184,166,0.12) 0%, transparent 60%), #020617',
         display: 'flex',
         justifyContent: 'center',
-        padding: 16,
+        padding: 8,
         boxSizing: 'border-box',
         fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
       }}
@@ -281,7 +281,8 @@ export default function QuickScanRunner({
           backdropFilter: 'blur(20px)',
           display: 'flex',
           flexDirection: 'column',
-          height: '95vh',
+          height: 'calc(100dvh - 16px)',
+          maxHeight: 'calc(100dvh - 16px)',
           overflow: 'hidden',
         }}
       >

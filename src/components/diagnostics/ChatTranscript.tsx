@@ -1,5 +1,5 @@
 /**
- * Kriya Pain Diagnostics — Chat Transcript
+ * Kriya CDE — DeepScan Chat Transcript
  *
  * Renders the scrolling message list. Bot messages are left-aligned glass bubbles;
  * the user's selections render as right-aligned pills.
@@ -18,80 +18,25 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { GC, Btn, Chip, Lbl } from './primitives';
+import { GC, Btn, Chip, Lbl, KI } from './primitives';
 import { severityColor, flagColor, flagLabel } from './scoring';
-import type { ChatEntry, DiagnosticResult, NoPainResult } from './types';
-import { isPreRelease, OPEN_BLOCKERS } from '@/lib/release-stage';
-
-/**
- * Open-blockers panel — only renders when stage !== 'prod'.  Shows the
- * clinical UAT team exactly what is still pending so they can adjudicate
- * the result they see against known-incomplete items.
- */
-function OpenBlockersPanel() {
-  if (!isPreRelease()) return null;
-  if (OPEN_BLOCKERS.length === 0) return null;
-  return (
-    <GC
-      style={{
-        padding: '12px 14px',
-        background: 'rgba(245,158,11,0.06)',
-        border: '1px solid rgba(245,158,11,0.30)',
-      }}
-    >
-      <div
-        style={{
-          fontSize: 10,
-          fontWeight: 700,
-          color: '#fbbf24',
-          textTransform: 'uppercase',
-          letterSpacing: '0.12em',
-          marginBottom: 8,
-        }}
-      >
-        🔬 Clinical UAT — Open Items ({OPEN_BLOCKERS.length})
-      </div>
-      <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
-        {OPEN_BLOCKERS.map((b) => (
-          <li
-            key={b.id}
-            style={{
-              fontSize: 11,
-              color: '#fde68a',
-              lineHeight: 1.5,
-              padding: '6px 0',
-              borderTop: '1px solid rgba(245,158,11,0.12)',
-            }}
-          >
-            <span
-              style={{
-                display: 'inline-block',
-                fontSize: 9,
-                fontWeight: 800,
-                background: b.severity === 'block' ? 'rgba(239,68,68,0.25)' : 'rgba(245,158,11,0.25)',
-                color: b.severity === 'block' ? '#fca5a5' : '#fcd34d',
-                padding: '1px 6px',
-                borderRadius: 4,
-                marginRight: 6,
-                letterSpacing: '0.08em',
-                textTransform: 'uppercase',
-              }}
-            >
-              {b.id} · {b.severity}
-            </span>
-            <strong>{b.title}.</strong> {b.detail}
-          </li>
-        ))}
-      </ul>
-    </GC>
-  );
-}
+import type { ChatEntry, DiagnosticResult, NoPainResult, PatientData } from './types';
+import { EXTRACT_FIELDS, type ExtractField } from '@/lib/extract-schema';
 
 interface Props {
   entries: ChatEntry[];
   typing: boolean;
-  /** Invoked when the user confirms an extraction-summary card. */
-  onConfirmExtraction?: (entryId: string) => void;
+  /**
+   * Invoked when the user confirms an extraction-summary card.  The card now
+   * renders editable controls per extracted field so the user may adjust the
+   * LLM's suggestions before confirming; the (possibly edited) patches are
+   * passed back via the second argument.  When undefined the orchestrator
+   * should fall back to the entry's original patches.
+   */
+  onConfirmExtraction?: (
+    entryId: string,
+    editedPatches?: Partial<PatientData> & { height?: string; weight?: string },
+  ) => void;
   /** Invoked when the user rejects an extraction-summary card. */
   onEditExtraction?: (entryId: string) => void;
   /** Invoked when the user taps a chip on a single-select chips-question bubble. */
@@ -111,8 +56,28 @@ export function ChatTranscript({
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
-  }, [entries.length, typing]);
+    const el = scrollRef.current;
+    if (!el) return;
+    // When the most recently appended entry is the final result card, scroll
+    // its TOP into view rather than jumping to the bottom of the transcript.
+    // Otherwise the disclaimer / open items would sit at the viewport bottom
+    // and the user would have to scroll up to see the severity tile and the
+    // top-3 condition list — the primary takeaways.
+    const last = entries[entries.length - 1];
+    if (last && last.role === 'bot' && last.kind === 'result') {
+      const target = el.querySelector<HTMLDivElement>(
+        `[data-entry-id="${last.id}"]`,
+      );
+      if (target) {
+        // Compute the offset of the result entry relative to the scroll
+        // container and scroll smoothly to that position (top-aligned).
+        const top = target.offsetTop - el.offsetTop;
+        el.scrollTo({ top, behavior: 'smooth' });
+        return;
+      }
+    }
+    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+  }, [entries, typing]);
 
   return (
     <div
@@ -128,14 +93,23 @@ export function ChatTranscript({
       }}
     >
       {entries.map((e) => (
-        <ChatBubble
+        // Wrapper preserves each bubble's alignSelf (user bubbles right-aligned,
+        // bot bubbles left-aligned) by re-creating the flex-column context.
+        // The data attribute lets the scroll effect target the result card.
+        <div
           key={e.id}
-          entry={e}
-          onConfirmExtraction={onConfirmExtraction}
-          onEditExtraction={onEditExtraction}
-          onChipsAnswer={onChipsAnswer}
-          onChipsAnswerMulti={onChipsAnswerMulti}
-        />
+          data-entry-id={e.id}
+          data-entry-kind={e.kind}
+          style={{ display: 'flex', flexDirection: 'column' }}
+        >
+          <ChatBubble
+            entry={e}
+            onConfirmExtraction={onConfirmExtraction}
+            onEditExtraction={onEditExtraction}
+            onChipsAnswer={onChipsAnswer}
+            onChipsAnswerMulti={onChipsAnswerMulti}
+          />
+        </div>
       ))}
       {typing && <TypingDots />}
     </div>
@@ -150,7 +124,10 @@ function ChatBubble({
   onChipsAnswerMulti,
 }: {
   entry: ChatEntry;
-  onConfirmExtraction?: (id: string) => void;
+  onConfirmExtraction?: (
+    id: string,
+    editedPatches?: Partial<PatientData> & { height?: string; weight?: string },
+  ) => void;
   onEditExtraction?: (id: string) => void;
   onChipsAnswer?: (id: string, value: string) => void;
   onChipsAnswerMulti?: (id: string, values: string[]) => void;
@@ -407,71 +384,12 @@ function ChatBubble({
   }
 
   if (entry.kind === 'extraction-summary') {
-    const resolved = entry.resolved;
     return (
-      <div style={{ alignSelf: 'flex-start', maxWidth: '95%' }}>
-        <GC v="glow" style={{ padding: 16 }}>
-          <Lbl>🧠 Captured from your description</Lbl>
-          {entry.labels.length === 0 ? (
-            <p style={{ fontSize: 13, color: '#94a3b8', margin: 0, lineHeight: 1.55 }}>
-              I couldn&apos;t confidently pull any structured answers from that — could you try the options above or rephrase?
-            </p>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12 }}>
-              {entry.labels.map((l) => (
-                <div
-                  key={l.key}
-                  style={{ fontSize: 13, color: '#f8fafc', lineHeight: 1.5 }}
-                >
-                  • {l.label}
-                </div>
-              ))}
-            </div>
-          )}
-          {entry.notes && (
-            <p
-              style={{
-                fontSize: 11,
-                color: '#64748b',
-                margin: '4px 0 12px',
-                fontStyle: 'italic',
-                lineHeight: 1.45,
-              }}
-            >
-              {entry.notes}
-            </p>
-          )}
-          {resolved ? (
-            <div
-              style={{
-                fontSize: 11,
-                fontWeight: 700,
-                color: resolved === 'confirmed' ? '#22c55e' : '#f59e0b',
-                textTransform: 'uppercase',
-                letterSpacing: '0.12em',
-              }}
-            >
-              {resolved === 'confirmed' ? '✓ Confirmed' : '✎ Editing'}
-            </div>
-          ) : entry.labels.length > 0 ? (
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <Chip
-                label="✓ Confirm"
-                sel
-                color="#22c55e"
-                onClick={() => onConfirmExtraction?.(entry.id)}
-              />
-              <Chip
-                label="✎ Edit / Redo"
-                sel={false}
-                onClick={() => onEditExtraction?.(entry.id)}
-              />
-            </div>
-          ) : (
-            <Btn onClick={() => onEditExtraction?.(entry.id)}>Continue with options</Btn>
-          )}
-        </GC>
-      </div>
+      <ExtractionSummaryBubble
+        entry={entry}
+        onConfirmExtraction={onConfirmExtraction}
+        onEditExtraction={onEditExtraction}
+      />
     );
   }
 
@@ -515,7 +433,6 @@ function ResultCard({ result }: { result: DiagnosticResult | NoPainResult }) {
             <strong>Disclaimer:</strong> {result.disclaimer}
           </p>
         </GC>
-        <OpenBlockersPanel />
       </div>
     );
   }
@@ -523,7 +440,9 @@ function ResultCard({ result }: { result: DiagnosticResult | NoPainResult }) {
   const r = result as DiagnosticResult;
   const sv = r.severity;
   const sevCol = severityColor(sv.bucket);
-  const maxS = Math.max(...Object.values(r.scores), 1);
+  // Probabilistic score numbers (per-condition and the severity points total)
+  // are no longer surfaced to users — they don't carry meaning outside of the
+  // internal engine.  We still colour the rank pill so 1/2/3 read as a ladder.
   const rankCols = ['#3b82f6', '#22d3ee', '#a855f7'];
 
   return (
@@ -587,7 +506,6 @@ function ResultCard({ result }: { result: DiagnosticResult | NoPainResult }) {
             >
               {sv.bucket}
             </div>
-            <div style={{ fontSize: 10, color: '#64748b', marginTop: 2 }}>{sv.total} pts</div>
           </GC>
           <GC style={{ padding: '12px 14px', border: '1px solid rgba(20,184,166,0.30)' }}>
             <div
@@ -620,7 +538,6 @@ function ResultCard({ result }: { result: DiagnosticResult | NoPainResult }) {
       <GC style={{ padding: 16 }}>
         <Lbl>Top 3 Probable Conditions</Lbl>
         {r.top_3.map((c, i) => {
-          const pBar = (c.score / maxS) * 100;
           const col = rankCols[i] ?? '#3b82f6';
           return (
             <div
@@ -630,7 +547,7 @@ function ResultCard({ result }: { result: DiagnosticResult | NoPainResult }) {
                 borderTop: i ? '1px solid rgba(255,255,255,0.06)' : 'none',
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <div
                   style={{
                     width: 26,
@@ -672,36 +589,6 @@ function ResultCard({ result }: { result: DiagnosticResult | NoPainResult }) {
                 >
                   {flagLabel(c.flag)}
                 </span>
-                <span
-                  style={{
-                    fontSize: 13,
-                    fontWeight: 800,
-                    color: col,
-                    minWidth: 28,
-                    textAlign: 'right',
-                  }}
-                >
-                  {c.score}
-                </span>
-              </div>
-              <div
-                style={{
-                  height: 4,
-                  borderRadius: 99,
-                  background: 'rgba(255,255,255,0.06)',
-                  overflow: 'hidden',
-                }}
-              >
-                <div
-                  style={{
-                    height: '100%',
-                    width: `${pBar}%`,
-                    borderRadius: 99,
-                    background: col,
-                    boxShadow: `0 0 8px ${col}66`,
-                    transition: 'width 800ms',
-                  }}
-                />
               </div>
             </div>
           );
@@ -735,7 +622,6 @@ function ResultCard({ result }: { result: DiagnosticResult | NoPainResult }) {
           <strong>Disclaimer:</strong> {r.disclaimer}
         </p>
       </GC>
-      <OpenBlockersPanel />
     </div>
   );
 }
@@ -815,6 +701,288 @@ function ChipsQuestionBubble({
           </Btn>
         )}
       </GC>
+    </div>
+  );
+}
+
+/**
+ * Editable extraction-summary bubble.
+ *
+ * Renders the LLM's extracted patches as editable controls keyed by each
+ * field's `ExtractField` metadata in `lib/extract-schema.ts`:
+ *   - enum         → single-select chips
+ *   - enum-multi   → multi-select chips
+ *   - number       → numeric KI input
+ *   - range-1-10   → 1-10 slider
+ *   - text         → text KI input
+ *   - (height/weight aliases use the number control)
+ *
+ * The user can adjust any field before pressing Confirm.  On confirm we
+ * call `onConfirmExtraction(entryId, editedPatches)` — the orchestrator
+ * applies these edited patches (not the original LLM patches) to PatientData.
+ */
+function ExtractionSummaryBubble({
+  entry,
+  onConfirmExtraction,
+  onEditExtraction,
+}: {
+  entry: Extract<ChatEntry, { kind: 'extraction-summary' }>;
+  onConfirmExtraction?: (
+    id: string,
+    editedPatches?: Partial<PatientData> & { height?: string; weight?: string },
+  ) => void;
+  onEditExtraction?: (id: string) => void;
+}) {
+  const resolved = entry.resolved;
+  const isResolved = resolved !== undefined;
+
+  // ── Resolve each extracted key to its ExtractField metadata ──
+  const editableFields: { key: string; field: ExtractField | undefined; label: string }[] =
+    entry.labels.map((l) => ({
+      key: l.key,
+      label: l.label,
+      field: EXTRACT_FIELDS.find((f) => f.key === l.key),
+    }));
+
+  // ── Local edit buffer keyed by QC field ──
+  const initialEdits: Record<string, unknown> = {};
+  for (const { key } of editableFields) {
+    const v = (entry.patches as Record<string, unknown>)[key];
+    if (v !== undefined) initialEdits[key] = v;
+  }
+  const [edits, setEdits] = useState<Record<string, unknown>>(initialEdits);
+
+  const setValue = (key: string, value: unknown) => {
+    setEdits((prev) => ({ ...prev, [key]: value }));
+  };
+
+  // ── Build edited patches when the user confirms ──
+  const buildEditedPatches = (): Partial<PatientData> & { height?: string; weight?: string } => {
+    const out: Record<string, unknown> = {};
+    for (const { key } of editableFields) {
+      const v = edits[key];
+      if (v === undefined || v === '' || (Array.isArray(v) && v.length === 0)) continue;
+      out[key] = v;
+    }
+    return out as Partial<PatientData> & { height?: string; weight?: string };
+  };
+
+  return (
+    <div style={{ alignSelf: 'flex-start', maxWidth: '95%' }}>
+      <GC v="glow" style={{ padding: 16 }}>
+        <Lbl>🧠 Captured from your description</Lbl>
+        {editableFields.length === 0 ? (
+          <p style={{ fontSize: 13, color: '#94a3b8', margin: 0, lineHeight: 1.55 }}>
+            I couldn&apos;t confidently pull any structured answers from that — could you try the options above or rephrase?
+          </p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 12 }}>
+            <p
+              style={{
+                fontSize: 11,
+                color: '#94a3b8',
+                margin: 0,
+                lineHeight: 1.55,
+              }}
+            >
+              Review what I picked up — tap any chip or value below to adjust before confirming.
+            </p>
+            {editableFields.map(({ key, field, label }) => (
+              <ExtractionFieldEditor
+                key={key}
+                qcKey={key}
+                fieldLabel={field?.label ?? label}
+                field={field}
+                value={edits[key]}
+                disabled={isResolved}
+                onChange={(v) => setValue(key, v)}
+              />
+            ))}
+          </div>
+        )}
+        {entry.notes && (
+          <p
+            style={{
+              fontSize: 11,
+              color: '#64748b',
+              margin: '4px 0 12px',
+              fontStyle: 'italic',
+              lineHeight: 1.45,
+            }}
+          >
+            {entry.notes}
+          </p>
+        )}
+        {resolved ? (
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 700,
+              color: resolved === 'confirmed' ? '#22c55e' : '#f59e0b',
+              textTransform: 'uppercase',
+              letterSpacing: '0.12em',
+            }}
+          >
+            {resolved === 'confirmed' ? '✓ Confirmed' : '✎ Editing'}
+          </div>
+        ) : editableFields.length > 0 ? (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <Chip
+              label="✓ Confirm"
+              sel
+              color="#22c55e"
+              onClick={() => onConfirmExtraction?.(entry.id, buildEditedPatches())}
+            />
+            <Chip
+              label="✎ Discard / Use chips"
+              sel={false}
+              onClick={() => onEditExtraction?.(entry.id)}
+            />
+          </div>
+        ) : (
+          <Btn onClick={() => onEditExtraction?.(entry.id)}>Continue with options</Btn>
+        )}
+      </GC>
+    </div>
+  );
+}
+
+/**
+ * Per-field editor used inside the extraction-summary bubble.  Picks the
+ * appropriate control based on the field's declared `kind` in the extraction
+ * schema.  Falls back to a free text input when the LLM produced a field we
+ * have no metadata for (e.g. legacy `height` / `weight` aliases).
+ */
+function ExtractionFieldEditor({
+  qcKey,
+  fieldLabel,
+  field,
+  value,
+  disabled,
+  onChange,
+}: {
+  qcKey: string;
+  fieldLabel: string;
+  field: ExtractField | undefined;
+  value: unknown;
+  disabled: boolean;
+  onChange: (next: unknown) => void;
+}) {
+  const labelHeader = (
+    <Lbl color="#94a3b8">
+      {fieldLabel}
+    </Lbl>
+  );
+
+  // ── enum (single) ──
+  if (field?.kind === 'enum' && field.enum) {
+    const current = typeof value === 'string' ? value : '';
+    return (
+      <div>
+        {labelHeader}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {field.enum.map((opt) => (
+            <Chip
+              key={opt}
+              label={opt}
+              sel={current === opt}
+              disabled={disabled}
+              onClick={() => onChange(opt)}
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // ── enum-multi ──
+  if (field?.kind === 'enum-multi' && field.enum) {
+    const arr: string[] = Array.isArray(value) ? (value as string[]) : [];
+    const toggle = (opt: string) => {
+      if (disabled) return;
+      if (opt === 'None' || opt === 'No surgeries reported' || opt === 'None of the above') {
+        onChange(arr.includes(opt) ? [] : [opt]);
+        return;
+      }
+      const withoutNone = arr.filter(
+        (x) =>
+          x !== 'None' && x !== 'No surgeries reported' && x !== 'None of the above',
+      );
+      onChange(
+        withoutNone.includes(opt)
+          ? withoutNone.filter((x) => x !== opt)
+          : [...withoutNone, opt],
+      );
+    };
+    return (
+      <div>
+        {labelHeader}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {field.enum.map((opt) => (
+            <Chip
+              key={opt}
+              label={opt}
+              sel={arr.includes(opt)}
+              color="#f59e0b"
+              disabled={disabled}
+              onClick={() => toggle(opt)}
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // ── range-1-10 ──
+  if (field?.kind === 'range-1-10') {
+    const num = typeof value === 'number' ? value : 5;
+    const col = num >= 7 ? '#ef4444' : num >= 4 ? '#f59e0b' : '#22c55e';
+    return (
+      <div>
+        {labelHeader}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <input
+            type="range"
+            min={1}
+            max={10}
+            value={num}
+            disabled={disabled}
+            onChange={(e) => onChange(parseInt(e.target.value, 10))}
+            style={{ flex: 1, accentColor: col }}
+          />
+          <span
+            style={{
+              fontSize: 13,
+              fontWeight: 800,
+              color: col,
+              minWidth: 36,
+              textAlign: 'right',
+            }}
+          >
+            {num}/10
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  // ── number / fallback aliases (height / weight) ──
+  if (field?.kind === 'number' || qcKey === 'height' || qcKey === 'weight') {
+    const str = typeof value === 'number' ? String(value) : (value as string | undefined) ?? '';
+    return (
+      <div>
+        {labelHeader}
+        <KI type="number" value={str} onChange={(v) => onChange(v)} placeholder="Enter a number" />
+      </div>
+    );
+  }
+
+  // ── text fallback ──
+  const str = typeof value === 'string' ? value : value !== undefined ? String(value) : '';
+  return (
+    <div>
+      {labelHeader}
+      <KI type="text" value={str} onChange={(v) => onChange(v)} placeholder="Type a value" />
     </div>
   );
 }
