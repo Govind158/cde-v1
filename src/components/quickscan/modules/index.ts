@@ -9,6 +9,9 @@
 import type { QSModule } from '../types';
 import lowBack from './low-back';
 import knee from './knee';
+import neck from './neck';
+import shoulder from './shoulder';
+import heelFoot from './heel-foot';
 import discBulge from './disc-bulge';
 import sciatica from './sciatica';
 import spondylosis from './spondylosis';
@@ -31,9 +34,9 @@ export interface QSModuleListing {
 export const LOCATION_MODULES: QSModuleListing[] = [
   { id: 'low-back', kind: 'location', displayName: 'Low Back', shortDescription: 'Postural / sciatic / chronic low-back patterns', estimatedMinutes: 3, deepScanRegion: 'Lower back', available: true, spec: lowBack },
   { id: 'knee', kind: 'location', displayName: 'Knee', shortDescription: 'Activity-related vs degenerative knee patterns', estimatedMinutes: 3, deepScanRegion: 'Knee or Ankle', available: true, spec: knee },
-  { id: 'neck', kind: 'location', displayName: 'Neck', shortDescription: 'Cervical and tech-neck signals', estimatedMinutes: 3, deepScanRegion: 'Neck', available: false },
-  { id: 'shoulder', kind: 'location', displayName: 'Shoulder', shortDescription: 'Rotator cuff, frozen shoulder & impingement', estimatedMinutes: 3, deepScanRegion: 'Shoulder', available: false },
-  { id: 'heel-foot', kind: 'location', displayName: 'Heel & Foot', shortDescription: 'Plantar fasciitis, achilles, forefoot', estimatedMinutes: 3, deepScanRegion: 'Knee or Ankle', available: false },
+  { id: 'neck', kind: 'location', displayName: 'Neck', shortDescription: 'Cervical and tech-neck signals', estimatedMinutes: 3, deepScanRegion: 'Neck', available: true, spec: neck },
+  { id: 'shoulder', kind: 'location', displayName: 'Shoulder', shortDescription: 'Rotator cuff, frozen shoulder & impingement', estimatedMinutes: 3, deepScanRegion: 'Shoulder', available: true, spec: shoulder },
+  { id: 'heel-foot', kind: 'location', displayName: 'Heel & Foot', shortDescription: 'Plantar fasciitis, achilles, forefoot', estimatedMinutes: 3, deepScanRegion: 'Knee or Ankle', available: true, spec: heelFoot },
 ];
 
 export const CONDITION_MODULES: QSModuleListing[] = [
