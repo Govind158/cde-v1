@@ -108,14 +108,8 @@ export function evaluateHalt(module: QSModule, answers: QSAnswers): QSHaltResult
       body,
       helplineCTAs:
         kind === 'emergency'
-          ? [
-              { label: 'Call 102 (Ambulance)', type: 'call' },
-              { label: 'Find nearest A&E', type: 'navigate' },
-            ]
-          : [
-              { label: 'Book a specialist consult', type: 'navigate' },
-              { label: 'Call your physician', type: 'call' },
-            ],
+          ? [{ label: 'Urgently book a specialist care', type: 'navigate' }]
+          : [{ label: 'Urgently book a specialist care', type: 'navigate' }],
       disclaimer: module.disclaimer,
       moduleId: module.id,
     };
